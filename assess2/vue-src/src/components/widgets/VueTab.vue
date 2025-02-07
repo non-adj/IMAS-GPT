@@ -2,11 +2,11 @@
   <div
     v-show="active"
     tabindex="0"
-    :id="id"
-    :aria-labelledby="control"
+    :id="hash"
+    :aria-labelledby="hash + '_tab'"
     class="vuetabpanel"
   >
-    <slot :active="active"></slot>
+    <slot :active="delayedactive"></slot>
   </div>
 </template>
 
@@ -16,11 +16,31 @@ export default {
   data: function () {
     return {
       active: false,
-      id: '',
-      control: ''
+      delayedactive: false,
+      hash: ''
     };
   },
-  props: ['name']
+  props: ['name'],
+  inject: ['addTab', 'activeTabHash'],
+  created () {
+    this.hash = 'vuetab_' + this.name.toLowerCase().replace(/ /g, '-');
+    this.addTab({
+      name: this.name,
+      hash: this.hash
+    });
+  },
+  watch: {
+    activeTabHash () {
+      this.active = (this.activeTabHash === this.hash);
+      if (this.active) {
+        // delay display briefly, to ensure contents are visible before
+        // they run their internal rendering. need for MQ layout issues
+        this.$nextTick(() => { this.delayedactive = true; });
+      } else {
+        this.delayedactive = false;
+      }
+    }
+  }
 };
 </script>
 

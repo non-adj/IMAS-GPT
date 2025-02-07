@@ -3,7 +3,7 @@
 //(c) 2014 David Lippman
 
 /*** master php includes *******/
-require("../init.php");
+require_once "../init.php";
 
 
  //set some page specific variables and counters
@@ -39,11 +39,11 @@ $line = $stm->fetch(PDO::FETCH_ASSOC);
 
 
 if ($overwriteBody==1) {
-	require("../header.php");
+	require_once "../header.php";
 	echo $body;
 } if (!isset($_REQUEST['versions'])) {
 
-	require("../header.php");
+	require_once "../header.php";
     echo "<div class=breadcrumb>$breadcrumbbase ";
     if (empty($_COOKIE['fromltimenu'])) {
         echo " <a href=\"course.php?cid=$cid\">".Sanitize::encodeStringForDisplay($coursename)."</a> &gt; ";
@@ -72,6 +72,7 @@ if ($overwriteBody==1) {
 	echo '<span class="form">Include question numbers and point values:</span><span class="formright"><input type="checkbox" name="showqn" checked="checked" /> </span><br class="form"/>';
 	echo '<span class="form">Hide text entry lines?</span><span class="formright"><input type=checkbox name=hidetxtboxes checked="checked" ></span><br class="form"/>';
 	echo '<span class="form">Include between-question text?</span><span class="formright"><input type=checkbox name=showtexts ></span><br class="form"/>';
+	echo '<span class="form">Include detailed solutions?</span><span class="formright"><input type=checkbox name=detsoln ></span><br class="form"/>';
 
 	echo '<p>NOTE: In some versions of Word, variables in equations may appear incorrectly at first.  To fix this, ';
 	echo 'select everything (Control-A), then under the Equation Tools menu, click Linear then Professional.</p>';
@@ -95,7 +96,7 @@ if ($overwriteBody==1) {
 
 	//load filter
 	$curdir = rtrim(dirname(__FILE__), '/\\');
-	require_once("$curdir/../filter/filter.php");
+	require_once "$curdir/../filter/filter.php";
 
 	$out = '<!DOCTYPE html><html><body>';
 
@@ -162,7 +163,7 @@ if ($overwriteBody==1) {
 	$numq = count($questions);
 
 	if ($courseUIver > 1) {
-		include('../assess2/AssessStandalone.php');
+		require_once '../assess2/AssessStandalone.php';
 		$a2 = new AssessStandalone($DBH);
 		$stm = $DBH->prepare("SELECT iqs.* FROM imas_questionset AS iqs JOIN imas_questions ON imas_questions.questionsetid=iqs.id WHERE imas_questions.assessmentid=:id");
 		$stm->execute(array(':id'=>$aid));
@@ -170,7 +171,7 @@ if ($overwriteBody==1) {
 			$a2->setQuestionData($qdata['id'], $qdata);
 		}
 	} else {
-	include("../assessment/displayq2.php");
+	require_once "../assessment/displayq2.php";
 	}
 
 	if (is_numeric($_REQUEST['versions'])) {
@@ -218,7 +219,8 @@ if ($overwriteBody==1) {
 	}
 	}
 
-
+    $sa = [];
+    $detsol = [];
 	if ($_REQUEST['format']=='trad') {
 		for ($j=0; $j<$copies; $j++) {
 			if ($j>0) { $out .= '<p>'.$_REQUEST['vsep'].'</p>';}
@@ -254,7 +256,7 @@ if ($overwriteBody==1) {
                     }
                 }
 				if ($courseUIver > 1) {
-					list($newout,$sa[$j][$i]) = printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_REQUEST['showqn']));
+					list($newout,$sa[$j][$i],$detsol[$j][$i]) = printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_REQUEST['showqn']));
 				} else {
 				list($newout,$sa[$j][$i]) = printq($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_REQUEST['showqn']));
 				}
@@ -275,6 +277,9 @@ if ($overwriteBody==1) {
 					} else {
 						$out .= printfilter(filter($sa[$j][$i]));
 					}
+                    if (!empty($_REQUEST['detsoln']) && !empty($detsol[$j][$i])) {
+                        $out .= printfilter(filter($detsol[$j][$i]));
+                    }
 					$out .= "</li>\n";
 				}
 				$out .= "</ol>\n";
@@ -313,7 +318,7 @@ if ($overwriteBody==1) {
 			for ($j=0; $j<$copies;$j++) {
 				if ($j>0) { $out .= '<p>'.$_REQUEST['qsep'].'</p>';}
 				if ($courseUIver > 1) {
-					list($newout,$sa[]) = printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_REQUEST['showqn']));
+					list($newout,$sa[],$detsol[]) = printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_REQUEST['showqn']));
 				} else {
 				list($newout,$sa[]) = printq($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_REQUEST['showqn']));
 				}
@@ -331,6 +336,9 @@ if ($overwriteBody==1) {
 				} else {
 					$out .= printfilter(filter($sa[$i]));
 				}
+                if (!empty($_REQUEST['detsoln']) && !empty($detsol[$i])) {
+                    $out .= printfilter(filter($detsol[$i]));
+                }
 				$out .= "</li>\n";
 			}
 			$out .= "</ol>\n";
@@ -348,7 +356,7 @@ if ($overwriteBody==1) {
 		$pandocurl = 'http://'.$CFG['GEN']['pandocserver'];
 	}
 
-	require("../header.php");
+	require_once "../header.php";
 	echo "<div class=breadcrumb>$breadcrumbbase <a href=\"course.php?cid=$cid\">".Sanitize::encodeStringForDisplay($coursename)."</a> ";
 	echo "&gt; Print Test</div>\n";
 
@@ -404,7 +412,7 @@ if ($overwriteBody==1) {
 	*/
   $_SESSION['mathdisp'] = $origmathdisp;
   $_SESSION['graphdisp'] = $origgraphdisp;
-  require("../footer.php");
+  require_once "../footer.php";
 	exit;
 }
 
@@ -431,7 +439,7 @@ function printq2($qn,$qsetid,$seed,$pts,$showpts) {
 	$retstrout .= printfilter($res['html']) . '</div>';
 	$retstrout .= '</div></div>';
 
-	return array($retstrout, $res['jsparams']['ans']);
+	return array($retstrout, $res['jsparams']['ans'], (($res['solnopts']&5)==5)?$res['soln']:'');
 }
 
 function printq($qn,$qsetid,$seed,$pts,$showpts) {

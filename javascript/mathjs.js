@@ -98,8 +98,8 @@ function mathjs(st,varlist) {
   //slice and concat new formula string
   //parenthesizes the function variables
   st = st.replace(/(\+\s*-|-\s*\+)/g,'-').replace(/-\s*-/g,'+');
-  st = st.replace("[","(");
-  st = st.replace("]",")");
+  st = st.replace(/\[/g,"(");
+  st = st.replace(/\]/g,")");
   st = st.replace(/\b00+\./g,'0.');
   st = st.replace(/root\s*(\d+)/,"root($1)");
   st = st.replace(/\|(.*?)\|/g,"abs($1)");
@@ -144,6 +144,8 @@ function mathjs(st,varlist) {
   st = st.replace(/([0-9])E([\-0-9])/g,"$1(EE)$2");
 
   st = st.replace(/\*?\s*degrees?/g,"*((pi)/180)");
+
+  st = st.replace(/div/,'/');
 
   //convert named constants
   st = st.replace(/e/g, "(E)");

@@ -1,11 +1,11 @@
 <?php
 //IMathAS:  Admin forms
 //(c) 2006 David Lippman
-require("../init.php");
+require_once "../init.php";
 
 //Look to see if a hook file is defined, and include if it is
 if (isset($CFG['hooks']['admin/forms'])) {
-	require($CFG['hooks']['admin/forms']);
+	require_once $CFG['hooks']['admin/forms'];
 }
 
 $placeinhead = '<script type="text/javascript" src="'.$staticroot.'/javascript/jquery.validate.min.js?v=122917"></script>';
@@ -16,8 +16,8 @@ if (function_exists('getHeaderCode')) {
 	$placeinhead .= getHeaderCode();
 }
 
-require("../header.php");
-require("../includes/htmlutil.php");
+require_once "../header.php";
+require_once "../includes/htmlutil.php";
 
 
 
@@ -107,23 +107,25 @@ switch($_GET['action']) {
 		break;
 	case "deladmin":
 		if ($myrights < 75) { echo _("You don't have the authority for this action"); break;}
-        $stm = $DBH->prepare("SELECT FirstName,LastName,SID,rights FROM imas_users WHERE id=:id");
+        $stm = $DBH->prepare("SELECT FirstName,LastName,SID,rights,groupid FROM imas_users WHERE id=:id");
 		$stm->execute(array(':id'=>$_GET['id']));
 		$line = $stm->fetch(PDO::FETCH_ASSOC);
-		if ($myrights==100) {
-			$stm = $DBH->prepare("SELECT iu.id,iu.FirstName,iu.LastName,ig.name FROM imas_users AS iu LEFT JOIN imas_groups AS ig ON iu.groupid=ig.id WHERE (iu.rights=100 OR iu.groupid=?) AND iu.rights>12 AND iu.rights<>76 AND iu.rights<>77 ORDER BY iu.LastName,iu.FirstName");
-            $stm->execute(array($groupid));
+		
+        if ($myrights==100) {
+			$stm = $DBH->prepare("SELECT iu.id,iu.FirstName,iu.LastName,ig.name FROM imas_users AS iu LEFT JOIN imas_groups AS ig ON iu.groupid=ig.id WHERE (iu.rights=100 OR iu.groupid=?) AND iu.rights>12 AND iu.rights<>76 AND iu.rights<>77 AND iu.id<>? ORDER BY iu.LastName,iu.FirstName");
+            $stm->execute(array($line['groupid'], $_GET['id']));
 		} else {
-			$stm = $DBH->prepare("SELECT id,FirstName,LastName FROM imas_users WHERE groupid=? AND rights>12 AND rights<>76 AND rights<>77 ORDER BY LastName,FirstName");
-			$stm->execute(array($groupid));
+			$stm = $DBH->prepare("SELECT id,FirstName,LastName FROM imas_users WHERE groupid=? AND rights>12 AND rights<>76 AND rights<>77 AND id<>? ORDER BY LastName,FirstName");
+			$stm->execute(array($line['groupid'], $_GET['id']));
 		}
-		$otherusers = array();
+		$otherusers = '<select name=transferto>';
 		while ($row = $stm->fetch(PDO::FETCH_ASSOC)) {
 			if ($row['name'] === null) {
 				$row['name'] = _('Default');
 			}
-			$otherusers[$row['id']] = $row['LastName'].', '.$row['FirstName'].(isset($row['name'])?' ('.$row['name'].')':'');
+			$otherusers .= '<option value="'.$row['id'].'">'. Sanitize::encodeStringForDisplay($row['LastName'].', '.$row['FirstName'].(isset($row['name'])?' ('.$row['name'].')':'')).'</option>';
 		}
+        $otherusers .= '</select>';
 
         $allInstrEnroll = array_unique(array_merge($CFG['GEN']['enrollonnewinstructor'] ?? [], $CFG['GEN']['enrolloninstructorapproval'] ?? [])); 
 		$stm = $DBH->prepare("SELECT courseid FROM imas_students WHERE userid=? and lastaccess>?");
@@ -146,9 +148,9 @@ switch($_GET['action']) {
 		}
 		echo '<form method="POST" action="actions.php?from='.Sanitize::encodeUrlParam($from).'&id='.Sanitize::encodeUrlParam($_GET['id']).'">';
         if ($line['rights']>10) {
-            echo '<p>Any questions or libraries owned by this user need to be transfered to another user. <br/>Select user to transfer them to: ';
-            writeHtmlSelect('transferto',array_keys($otherusers),array_values($otherusers), $userid);
-            echo '</p>';
+            echo '<p>'._('Any questions or libraries owned by this user need to be transfered to another user.').'</p>';
+            require_once '../includes/userlookupform.php'; 
+            generateUserLookupForm(_('Transfer question and library ownership to:'), 'transferto', $otherusers);
         }
 		echo '<p><button type=submit name="action" value="deladmin">'._('Delete').'</button>';
 		echo "<input type=button value=\"",_("Nevermind"),"\" class=\"secondarybtn\" onclick=\"window.location='".Sanitize::encodeStringForJavascript($backloc)."'\"></p>\n";
@@ -160,6 +162,7 @@ switch($_GET['action']) {
     echo "<form method=post id=userform class=limitaftervalidate action=\"actions.php?from=".Sanitize::encodeUrlParam($from);
 		if ($_GET['action']=="chgrights") { echo "&id=".Sanitize::encodeUrlParam($_GET['id']); }
 		echo "\">\n";
+        echo '<div id="errorlive" aria-live="polite" class="sr-only"></div>';
 		echo '<input type=hidden name=action value="'.Sanitize::encodeStringForDisplay($_GET['action']).'" />';
 		if ($_GET['action'] == "newadmin") {
 			echo '<div class="pagetitle"><h1>'._('New User').'</h1></div>';
@@ -413,7 +416,16 @@ switch($_GET['action']) {
 			echo '<span id="newgroup" style="display:none"><br/>New group name: ';
 			echo ' <input name=newgroupname size=20 onblur="checkgroupisnew()"/></span>';
 			echo "</span><br class=form />\n";
-		}
+		} else if ($myrights == 75 && $oldgroup == $groupid) {
+			$stm = $DBH->prepare("SELECT name FROM imas_groups WHERE id=?");
+			$stm->execute(array($oldgroup));
+			$groupname = $stm->fetchColumn(0);
+			echo "<span class=form>Group: </span>";
+			echo "<span class=formright>";
+			echo '<b>'.Sanitize::encodeStringForDisplay($groupname).'</b> ';
+			echo '<label><input name=removefromgroup type=checkbox value=1> '._('Remove from group') .'</label>';
+			echo "</span><br class=form />\n";
+		} 
 		if ($myrights >= 75 || ($myspecialrights&32)==32) {
 			echo '<span class=form>'._('Add a course').'</span>';
 			echo '<span class=formright><label><input type=checkbox name=addnewcourse value=1> ';
@@ -422,7 +434,7 @@ switch($_GET['action']) {
 
 		echo "<div class=submit><input type=submit value=Save></div></form>\n";
 		if ($_GET['action'] == "newadmin") {
-			require_once("../includes/newusercommon.php");
+			require_once "../includes/newusercommon.php";
 			showNewUserValidation("userform", ['group'], ['group' => 'true, min: -1']);
 		} else if ($myrights==100) {
 			echo '<p>&nbsp;</p><p>&nbsp;</p>';
@@ -638,7 +650,7 @@ switch($_GET['action']) {
 					$stm->execute(array(':id'=>$ctc));
 					if ($stm->rowCount()==0) {
 						echo '<p>Invalid course. <a href="addcourse.php">Try again</a></p>';
-						require("../footer.php");
+						require_once "../footer.php";
 						exit;
 					}
 					$ctcinfo = $stm->fetch(PDO::FETCH_ASSOC);
@@ -648,7 +660,7 @@ switch($_GET['action']) {
 						if ($ctcinfo['enrollkey'] != '' && $ctcinfo['enrollkey'] != $_POST['ekey']) {
 							//did not provide valid enrollment key
 							echo '<p>',_('Incorrect enrollment key provided'),'. <a href="addcourse.php">'._('Try again').'</a></p>';
-							require("../footer.php");
+							require_once "../footer.php";
 							exit;
 						}
 					}
@@ -661,6 +673,7 @@ switch($_GET['action']) {
 					$theme = $ctcinfo['theme'];
 					$msgset = $ctcinfo['msgset'];
 					$courselevel = $ctcinfo['level'];
+                    $deftime = $ctcinfo['deftime'];
 				}
 			} else {
 				$ctc = 0;
@@ -1111,7 +1124,11 @@ switch($_GET['action']) {
 
 			echo '<input type="checkbox" name="toolset-forum" value="2" ';
 			if (($toolset&2)==0) { echo 'checked="checked"';}
-			echo '> ',_('Forum List');
+			echo '> ',_('Forum List'),'<br/>';
+
+            echo '<input type="checkbox" name="toolset-gb" value="4" ';
+			if (($toolset&4)==0) { echo 'checked="checked"';}
+			echo '> ',_('Gradebook');
 
 			echo '</span><br class=form />';
 		}
@@ -1709,19 +1726,19 @@ switch($_GET['action']) {
 			if ($from!='home' && $myrights>=75) {
 				$query .= ",iut.LastName AS teacherfirst,iut.FirstName AS teacherlast";
 			}
-			$query .= " FROM imas_users AS iu JOIN ";
-			$query .= "imas_students AS i_s ON iu.id=i_s.userid JOIN imas_courses AS ic ON ic.id=i_s.courseid ";
+			$query .= " FROM imas_users AS iu LEFT JOIN ";
+			$query .= "imas_students AS i_s ON iu.id=i_s.userid LEFT JOIN imas_courses AS ic ON ic.id=i_s.courseid ";
 			$myrights = 75;
 			if ($from=='home' || $myrights<75) {
 				$query .= "JOIN imas_teachers AS i_t ON ic.id=i_t.courseid ";
 				$query .= "WHERE i_t.userid=? AND ";
 				$qarr = array($userid);
 			} else {
-				$query .= "JOIN imas_teachers AS i_t ON ic.id=i_t.courseid ";
-				$query .= "JOIN imas_users AS iut ON i_t.userid=iut.id ";
+				$query .= "LEFT JOIN imas_teachers AS i_t ON ic.id=i_t.courseid ";
+				$query .= "LEFT JOIN imas_users AS iut ON i_t.userid=iut.id ";
 				if ($myrights<100) {
-					$query .= "WHERE iut.groupid=? AND ";
-					$qarr = array($groupid);
+					$query .= "WHERE (iut.groupid=? OR iu.groupid=?) AND ";
+					$qarr = array($groupid,$groupid);
 				} else {
 					$query .= "WHERE ";
 					$qarr = array();
@@ -1746,6 +1763,7 @@ switch($_GET['action']) {
 				echo '<table class="gb"><thead><th>Student</th><th>Username</th><th>Course</th>';
 				if ($from!='home' && $myrights>=75) {
 					echo '<th>Instructor</th>';
+                    echo '<th>Edit User</th>';
 				}
 				echo '</thead><tbody>';
 				$i = 0;
@@ -1758,6 +1776,8 @@ switch($_GET['action']) {
 					echo '<td>'.Sanitize::encodeStringForDisplay($row['name']).'</td>';
 					if ($from!='home' && $myrights>=75) {
 						echo '<td>'.Sanitize::encodeStringForDisplay($row['teacherlast'].', '.$row['teacherfirst']).'</td>';
+                        echo '<td><a href="forms.php?from='.Sanitize::encodeUrlParam($from).'&action=chgrights&id='.Sanitize::onlyInt($row['id']).'">';
+                        echo _('Edit').'</a></td>';
 					}
 					echo '</td></tr>';
 				}
@@ -1768,5 +1788,5 @@ switch($_GET['action']) {
 		break;
 }
 
-require("../footer.php");
+require_once "../footer.php";
 ?>

@@ -3,10 +3,10 @@
 //(c) 2006 David Lippman
 
 /*** master php includes *******/
-require("../init.php");
-require("../includes/htmlutil.php");
-require("../includes/newusercommon.php");
-require_once("../includes/filehandler.php");
+require_once "../init.php";
+require_once "../includes/htmlutil.php";
+require_once "../includes/newusercommon.php";
+require_once "../includes/filehandler.php";
 
 /*** pre-html data manipulation, including function code *******/
 // Reads past the UTF-8 bom if it is there.
@@ -108,9 +108,9 @@ if (!(isset($teacherid)) && $myrights<100) {
 	//FORM HAS BEEN POSTED, STEP 3 DATA MANIPULATION
 	if (isset($_POST['process'])) {
 		if (isset($CFG['GEN']['newpasswords'])) {
-			require_once("../includes/password.php");
+			require_once "../includes/password.php";
         }
-        require('../includes/setSectionGroups.php');
+        require_once '../includes/setSectionGroups.php';
 		if ($isadmin) {
 			$ncid = Sanitize::onlyInt($_POST['enrollcid']);
 		} else {
@@ -124,10 +124,10 @@ if (!(isset($teacherid)) && $myrights<100) {
     $uploadfile = getimportfilepath($filekey);
     $handle = fopen_utf8($uploadfile,'r');
 		if ($_POST['hdr']==1) {
-			$data = fgetcsv($handle,2096);
+			$data = fgetcsv($handle,2096, ',', '"', '');
 		}
         
-		while (($data = fgetcsv($handle,2096))!==false) {
+		while (($data = fgetcsv($handle,2096, ',', '"', ''))!==false) {
 			$arr = parsecsv($data);
 			for ($i=0;$i<count($arr);$i++) {
 				$arr[$i] = trim($arr[$i]);
@@ -214,7 +214,7 @@ if (!(isset($teacherid)) && $myrights<100) {
 
 		$handle = fopen_utf8($uploadfile,'r');
 		if ($_POST['hdr']==1) {
-			$data = fgetcsv($handle,2096);
+			$data = fgetcsv($handle,2096, ',', '"', '');
 		}
 
 		if ($_POST['codetype']==1) {
@@ -226,7 +226,7 @@ if (!(isset($teacherid)) && $myrights<100) {
 
 		$page_sampleImport = array();
 		for ($i=0; $i<5; $i++) {
-			$data = fgetcsv($handle,2096);
+			$data = fgetcsv($handle,2096, ',', '"', '');
 			if ($data!=FALSE) {
 				$arr = parsecsv($data);
 				$page_sampleImport[$i]['col1'] = $arr[0];
@@ -261,7 +261,7 @@ if (!(isset($teacherid)) && $myrights<100) {
 
 
 /******* begin html output ********/
-require("../header.php");
+require_once "../header.php";
 
 if ($overwriteBody==1) {
 	echo $body;
@@ -279,6 +279,7 @@ if ($overwriteBody==1) {
 		<div id="headerimportstu" class="pagetitle"><h1>Import Students</h1></div>
 		<p>The first 5 students in the file are listed below.  Check the columns were identified correctly</p>
 			<table class=gb>
+            <caption class="sr-only">Student Info</caption>
 			<thead>
 				<tr>
 					<th>Username</th><th>Firstname</th><th>Lastname</th><th>e-mail</th>
@@ -397,5 +398,5 @@ if ($overwriteBody==1) {
 	echo "	</form>\n";
 }
 
-require("../footer.php");
+require_once "../footer.php";
 ?>

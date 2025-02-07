@@ -3,7 +3,7 @@
 //(c) 2006 David Lippman
 
 /*** master php includes *******/
-require("../init.php");
+require_once "../init.php";
 
 
 
@@ -58,7 +58,7 @@ $isdiag = false;
 if ($overwriteBody==1) {
 	echo $body;
 } if (!isset($_POST['versions'])) {
-	require("../header.php");
+	require_once "../header.php";
     echo "<div class=breadcrumb>$breadcrumbbase ";
     if (empty($_COOKIE['fromltimenu'])) {
         echo " <a href=\"course.php?cid=$cid\">".Sanitize::encodeStringForDisplay($coursename)."</a> &gt; ";
@@ -93,12 +93,13 @@ if ($overwriteBody==1) {
 	echo '<span class="form">Math display:</span><span class="formright"><input type="radio" name="mathdisp" value="img" checked="checked" /> Images <input type="radio" name="mathdisp" value="text"/> Text <input type="radio" name="mathdisp" value="tex"/> TeX <input type="radio" name="mathdisp" value="textandimg"/> Images, then again in text</span><br class="form"/>';
 	echo '<span class="form">Include question numbers and point values:</span><span class="formright"><input type="checkbox" name="showqn" checked="checked" /> </span><br class="form"/>';
 	echo '<span class="form">Hide text entry lines?</span><span class="formright"><input type=checkbox name=hidetxtboxes ></span><br class="form"/>';
+	echo '<span class="form">Include detailed solutions?</span><span class="formright"><input type=checkbox name=detsoln ></span><br class="form"/>';
 
 	echo '<div class="submit"><input type=submit value="Continue"></div></form>';
 
 } else {
     $useeqnhelper = 0;
-	require("../assessment/header.php");
+	require_once "../assessment/header.php";
 	$stm = $DBH->prepare("SELECT itemorder,shuffle,defpoints,name,intro FROM imas_assessments WHERE id=:id");
 	$stm->execute(array(':id'=>$aid));
 	$line = $stm->fetch(PDO::FETCH_ASSOC);
@@ -183,7 +184,7 @@ if ($overwriteBody==1) {
 <?php
 
     if ($courseUIver > 1) {
-        include('../assess2/AssessStandalone.php');
+        require_once '../assess2/AssessStandalone.php';
         $a2 = new AssessStandalone($DBH);
         $stm = $DBH->prepare("SELECT iqs.* FROM imas_questionset AS iqs JOIN imas_questions ON imas_questions.questionsetid=iqs.id WHERE imas_questions.assessmentid=:id");
         $stm->execute(array(':id'=>$aid));
@@ -191,7 +192,7 @@ if ($overwriteBody==1) {
             $a2->setQuestionData($qdata['id'], $qdata);
         }
     } else {
-	include("../assessment/displayq2.php");
+	require_once "../assessment/displayq2.php";
     }
 
 
@@ -245,7 +246,8 @@ if ($overwriteBody==1) {
 			echo Sanitize::encodeStringForDisplay($_POST['vsep']).'<br/>';;
 
 		}
-
+        $sa = [];
+        $detsol = [];
 		if ($_POST['format']=='trad') {
 			for ($j=0; $j<$copies; $j++) {
 				if ($j>0) { echo Sanitize::encodeStringForDisplay($_POST['vsep']).'<br/>';}
@@ -272,10 +274,10 @@ if ($overwriteBody==1) {
 				for ($i=0; $i<$numq; $i++) {
 					if ($i>0) { echo Sanitize::encodeStringForDisplay($_POST['qsep']);}
                     if ($courseUIver > 1) {
-                        $sa[$j][$i] = printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_POST['showqn']));
+                        list($newout,$sa[$j][$i],$detsol[$j][$i])= printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_POST['showqn']));
                     } else {
-					$sa[$j][$i] = printq($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_POST['showqn']));
-				}
+					    $sa[$j][$i] = printq($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_POST['showqn']));
+				    }
 			}
 			}
 
@@ -291,6 +293,9 @@ if ($overwriteBody==1) {
 						} else {
 						  echo Sanitize::outgoingHTML(printfilter(filter($sa[$j][$i])));
 						}
+                        if (!empty($_REQUEST['detsoln']) && !empty($detsol[$j][$i])) {
+                            echo printfilter(filter($detsol[$j][$i]));
+                        }
 						echo "</li>\n";
 					}
 					echo "</ol>\n";
@@ -320,7 +325,7 @@ if ($overwriteBody==1) {
 				for ($j=0; $j<$copies;$j++) {
 					if ($j>0) { echo Sanitize::encodeStringForDisplay($_POST['qsep']);}
                     if ($courseUIver > 1) {
-                        $sa[] = printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_POST['showqn']));
+                        list($newout,$sa[],$detsol[]) = printq2($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_POST['showqn']));
                     } else {
 					$sa[] = printq($i,$qn[$questions[$i]],$seeds[$j][$i],$points[$questions[$i]],isset($_POST['showqn']));
 				}
@@ -337,6 +342,9 @@ if ($overwriteBody==1) {
 					} else {
 					  echo Sanitize::outgoingHTML(printfilter(filter($sa[$i])));
 					}
+                    if (!empty($_REQUEST['detsoln']) && !empty($detsol[$i])) {
+                        echo printfilter(filter($detsol[$i]));
+                    }
 					echo "</li>\n";
 				}
 				echo "</ol>\n";
@@ -352,7 +360,7 @@ if ($overwriteBody==1) {
 
 }
 $_SESSION['graphdisp'] = $origgraphdisp;
-require("../footer.php");
+require_once "../footer.php";
 
 function printq2($qn,$qsetid,$seed,$pts,$showpts) {
     global $a2,$isfinal,$imasroot,$urlmode;
@@ -381,7 +389,8 @@ function printq2($qn,$qsetid,$seed,$pts,$showpts) {
     
     echo $retstrout;
 
-	return $res['jsparams']['ans'];
+	//return $res['jsparams']['ans'];
+    return array($retstrout, $res['jsparams']['ans'], (($res['solnopts']&5)==5)?$res['soln']:'');
 }
 
 function printq($qn,$qsetid,$seed,$pts,$showpts) {

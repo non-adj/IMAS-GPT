@@ -41,10 +41,18 @@ class CalculatedAnswerBox implements AnswerBox
         $preview = '';
         $params = [];
 
-        $optionkeys = ['ansprompt', 'answerboxsize', 'hidepreview', 'answerformat',
+        $optionkeys = ['ansprompt', 'answerboxsize', 'hidepreview', 
             'answer', 'reqdecimals', 'reqsigfigs', 'displayformat', 'readerlabel'];
         foreach ($optionkeys as $optionkey) {
             ${$optionkey} = getOptionVal($options, $optionkey, $multi, $partnum);
+        }
+
+        $optionkeys = ['answerformat'];
+        foreach ($optionkeys as $optionkey) {
+            ${$optionkey} = getOptionVal($options, $optionkey, $multi, $partnum, 1);
+        }
+        if (is_array($answerformat)) {
+            $answerformat = $answerformat[0]; // only use first for question display
         }
 
         if (empty($answerboxsize)) {$answerboxsize = 20;}
@@ -93,6 +101,9 @@ class CalculatedAnswerBox implements AnswerBox
         } else {
             $tip = '';
             $eword = _('your answer');
+        }
+        if ($reqdecimals !== '') {
+            list($reqdecimals, $exactreqdec, $reqdecoffset, $reqdecscoretype) = parsereqsigfigs($reqdecimals);
         }
         list($longtip, $shorttip) = formathint($eword, $ansformats, ($reqdecimals !== '') ? $reqdecimals : null, 'calculated', ($isListAnswer || in_array('set', $ansformats) || in_array('exactset', $ansformats)), 1);
         $tip .= $longtip;
@@ -169,12 +180,15 @@ class CalculatedAnswerBox implements AnswerBox
         }
         $preview .= "$leftb<span id=p$qn></span>$rightb ";
 
+        $nosolntype = 0;
         if (in_array('nosoln', $ansformats) || in_array('nosolninf', $ansformats)) {
-            list($out, $answer) = setupnosolninf($qn, $out, $answer, $ansformats, $la, $ansprompt, $colorbox);
+            list($out, $answer, $nosolntype) = setupnosolninf($qn, $out, $answer, $ansformats, $la, $ansprompt, $colorbox);
         }
 
         if ($answer !== '' && !is_array($answer) && !$isConditional) {
-            if (!is_numeric($answer)) {
+            if ($nosolntype > 0) {
+                $sa = $answer;
+            } else if (!is_numeric($answer)) {
                 //$sa = '`' . $answer . '`';
                 if (in_array('allowplusminus', $ansformats)) {
                     $answer = str_replace('+-','pm',$answer);

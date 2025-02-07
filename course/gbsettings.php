@@ -1,14 +1,14 @@
 <?php
 //IMathAS:  Add/modify gradebook categories
 //(c) 2006 David Lippman
-	require("../init.php");
-	require("../includes/htmlutil.php");
+	require_once "../init.php";
+	require_once "../includes/htmlutil.php";
 
 
 	if (!(isset($teacherid))) {
-		require("../header.php");
+		require_once "../header.php";
 		echo "You need to log in as a teacher to access this page";
-		require("../footer.php");
+		require_once "../footer.php";
 		exit;
 	}
 	$cid = Sanitize::courseId($_GET['cid']);
@@ -61,12 +61,12 @@
 			} else {
 				$chop = 0;
 			}
-			if ($_POST['droptype'][$id]==0) {
-				$drop = 0;
-			} else if ($_POST['droptype'][$id]==1){
-				$drop = $_POST['dropl'][$id];
+			if ($_POST['droptype'][$id]==1){
+				$drop = intval($_POST['dropl'][$id]);
 			} else if ($_POST['droptype'][$id]==2) {
-				$drop = -1*$_POST['droph'][$id];
+				$drop = -1*intval($_POST['droph'][$id]);
+			} else {
+				$drop = 0;
 			}
 			if ($useweights==1) {
 				$weight = $_POST['weight'][$id];
@@ -230,7 +230,7 @@
 	</script>';
 
 	$placeinhead = $sc;
-	require("../header.php");
+	require_once "../header.php";
     echo "<div class=breadcrumb>$breadcrumbbase ";
     if (empty($_COOKIE['fromltimenu'])) {
         echo " <a href=\"course.php?cid=$cid\">".Sanitize::encodeStringForDisplay($coursename)."</a> &gt; ";
@@ -527,5 +527,5 @@
 		}
 
 	}
-	require("../footer.php");
+	require_once "../footer.php";
 ?>

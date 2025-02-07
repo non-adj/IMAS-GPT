@@ -2,7 +2,7 @@
 //IMathAS:  Outcomes report array generator
 //(c) 2013 David Lippman for Lumen Learning
 
-require_once("../includes/exceptionfuncs.php");
+require_once "../includes/exceptionfuncs.php";
 
 /***
 format of output
@@ -193,6 +193,7 @@ function outcometable() {
 	$startdate = array();
 	$enddate = array();
 	$LPcutoff = array();
+    $LPenddate = [];
 	$allowlate = array();
 	$timelimits = array();
 	$avail = array();
@@ -241,6 +242,18 @@ function outcometable() {
 			// $sa = scoresingb setting
 			$assessmenttype[$kcnt] = $line['viewingb'];
 			$sa[$kcnt] = $line['scoresingb'];
+            if ($line['scoresingb'] == 'after_lp') {
+                $adjusted_allowlate = ($line['allowlate'] % 10) - 1; // ignore "allow use after"
+                if ($adjusted_allowlate == 0) { // this is now "unlimited"
+                    $LPenddate[$kcnt] = 2000000000;
+                } else {
+                    $LPenddate[$kcnt] = strtotime("+".($GLOBALS['latepasshrs']*$adjusted_allowlate)." hours", $line['enddate']);
+                }
+                $LPenddate[$kcnt] = min($LPenddate[$kcnt], $GLOBALS['courseenddate']);
+                if ($line['LPcutoff'] > 0) {
+                    $LPenddate[$kcnt] = min($LPenddate[$kcnt], $line['LPcutoff']);
+                }
+            }
 		} else {
 			$deffeedback = explode('-',$line['deffeedback']);
 			$assessmenttype[$kcnt] = $deffeedback[0];
@@ -762,7 +775,7 @@ function outcometable() {
 
 		$gb[$row][1][$col][3] = $l['userid'];; //in place of assessment session id
 
-		$scoreddata = json_decode(gzdecode($l['scoreddata']), true);
+		$scoreddata = json_decode(Sanitize::gzexpand($l['scoreddata']), true);
 		$assessver = $scoreddata['assess_versions'][$scoreddata['scored_version']];
 		$pts = array();
 		$ptsposs = array();
@@ -821,6 +834,7 @@ function outcometable() {
 		if (!$canviewall && (
 			($sa[$i]=="never") ||
 		 	($sa[$i]=='after_due' && $now < $thised) ||
+            ($sa[$i]=='after_lp' && $now < max($thised,$LPenddate[$i])) ||
 			($sa[$i]=='after_take' && !$hasSubmittedTake)
 		)) {
 			$gb[$row][1][$col][0] = 'N/A'; //score is not available
@@ -949,11 +963,11 @@ function outcometable() {
                         $gb[$row][1][$col][1][$oc] = $possible[$i];
 					}
 					if ($gb[0][1][$col][2]<1) { //past
-						$cattotpast[$row][$category[$i]][$oc][$col] = $gb[$row][1][$col][0];
+						$cattotpast[$row][$category[$i]][$oc][$col] = $gb[$row][1][$col][0][$oc];
 						$catposspast[$row][$category[$i]][$oc][$col] = $possible[$i];
 					}
 					if ($gb[0][1][$col][3]<2) { //past or cur
-						$cattotcur[$row][$category[$i]][$oc][$col] = $gb[$row][1][$col][0];
+						$cattotcur[$row][$category[$i]][$oc][$col] = $gb[$row][1][$col][0][$oc];
 						$catposscur[$row][$category[$i]][$oc][$col] = $possible[$i];
 					}
 				}
@@ -1006,12 +1020,13 @@ function outcometable() {
 		$totcur = array();
 		$totposscur = array();
 		$pos = 0; //reset position for category totals
-
+        
 		foreach($catorder as $cat) {//foreach category
             if (isset($cats[$cat][6]) && $cats[$cat][6]==1) {//hidden
 				continue;
 			}
 			//add up scores for each outcome
+
 			if (isset($cattotpast[$ln][$cat])) {
 				foreach ($cattotpast[$ln][$cat] as $oc=>$scs) {
 					$cattotpast[$ln][$cat][$oc] = array_sum($scs);
@@ -1034,8 +1049,10 @@ function outcometable() {
 						$totposspast[$oc] += $catposspast[$ln][$cat][$oc];
 						$totpast[$oc] += $cattotpast[$ln][$cat][$oc];
 					}
+                    
 				}
 			}
+
 			if (isset($cattotcur[$ln][$cat])) {
 				foreach ($cattotcur[$ln][$cat] as $oc=>$scs) {
 					$cattotcur[$ln][$cat][$oc] = array_sum($scs);

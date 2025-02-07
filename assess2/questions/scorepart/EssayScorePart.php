@@ -2,8 +2,8 @@
 
 namespace IMathAS\assess2\questions\scorepart;
 
-require_once(__DIR__ . '/ScorePart.php');
-require_once(__DIR__ . '/../models/ScorePartResult.php');
+require_once __DIR__ . '/ScorePart.php';
+require_once __DIR__ . '/../models/ScorePartResult.php';
 
 use IMathAS\assess2\questions\models\ScorePartResult;
 use IMathAS\assess2\questions\models\ScoreQuestionParams;
@@ -32,9 +32,16 @@ class EssayScorePart implements ScorePart
 
         $defaultreltol = .0015;
 
-        require_once(dirname(__FILE__)."/../../../includes/htmLawed.php");
+        require_once dirname(__FILE__)."/../../../includes/htmLawed.php";
 
-        $givenans = myhtmLawed($givenans);
+        $NC = [
+            'deny_attribute' => 'on*,data*,aria*,tabindex,id'
+        ]; // extended config to remove stuff that might interfere
+        $givenans = myhtmLawed($givenans, $NC);
+        if (strlen($givenans)>30000) {
+            $givenans = substr($givenans,0,30000) . ' (remainder truncated due to length)';
+            $givenans = myhtmLawed($givenans, $NC); // do again to close any truncated tags
+        }
         $scorePartResult->setLastAnswerAsGiven($givenans);
 
         $scoremethod = getOptionVal($options, 'scoremethod', $multi, $partnum);

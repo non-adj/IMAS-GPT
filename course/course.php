@@ -3,20 +3,26 @@
 //(c) 2006 David Lippman
 
 /*** master php includes *******/
-require("../init.php");
-require("courseshowitems.php");
-require("../includes/htmlutil.php");
-require("../includes/calendardisp.php");
+require_once "../init.php";
+require_once "courseshowitems.php";
+require_once "../includes/htmlutil.php";
+require_once "../includes/calendardisp.php";
 
 
 /*** pre-html data manipulation, including function code *******/
 function buildBlockLeftNav($items, $parent, &$blocklist) {
+    global $studentinfo;
 	$now = time();
 	foreach ($items as $k=>$item) {
 		if (is_array($item)) {
 			if (!empty($item['innav'])) {
 				if (($item['avail']==2 || ($item['avail']==1 && $item['startdate']<$now && $item['enddate']>$now)) ||
 				    ($item['SH'][0]=='S' && $item['avail']>0)) {
+                    if (!empty($studentinfo) && isset($item['grouplimit']) && count($item['grouplimit']) > 0) {
+                        if (!in_array(strtolower('s-' . $studentinfo['section']), array_map('strtolower', $item['grouplimit']))) {
+                            continue;
+                        }
+                    }
 					$blocklist[] = array($item['name'], $parent.'-'.($k+1), $item['SH'][1]);
 				}
 			}
@@ -40,7 +46,7 @@ if (!isset($teacherid) && !isset($tutorid) && !isset($studentid) && !isset($inst
     }
 	if (isset($teacherid) && isset($_SESSION['sessiontestid']) && !isset($_SESSION['actas']) && $_SESSION['courseid']==$cid) {
 		//clean up coming out of an assessment
-		require_once("../includes/filehandler.php");
+		require_once "../includes/filehandler.php";
 		//deleteasidfilesbyquery(array('id'=>$_SESSION['sessiontestid']),1);
 		deleteasidfilesbyquery2('id',$_SESSION['sessiontestid'],null,1);
 		$stm = $DBH->prepare("DELETE FROM imas_assessment_sessions WHERE id=:id LIMIT 1");
@@ -381,7 +387,7 @@ if (isset($tutorid) && isset($_SESSION['ltiitemtype']) && $_SESSION['ltiitemtype
 }
 
 /******* begin html output ********/
-require("../header.php");
+require_once "../header.php";
 
 /**** post-html data manipulation ******/
 // this page has no post-html data manipulation
@@ -434,12 +440,12 @@ if ($overwriteBody==1) {
 <?php
 	//check for course layout
 	if (isset($CFG['GEN']['courseinclude'])) {
-		require($CFG['GEN']['courseinclude']);
+		require_once $CFG['GEN']['courseinclude'];
 		if ($firstload) {
 			echo "<script>document.cookie = 'openblocks-$cid=' + oblist;\n";
 			echo "document.cookie = 'loadedblocks-$cid=0';</script>\n";
 		}
-		require("../footer.php");
+		require_once "../footer.php";
 		exit;
 	}
 ?>
@@ -454,9 +460,9 @@ if ($overwriteBody==1) {
 			echo '<span class="noticetext">', _('Instructor Preview'), '</span> ';
 		}
 		if (isset($_SESSION['ltiitemtype'])) {
-			echo "<a href=\"#\" onclick=\"GB_show('"._('User Preferences')."','$imasroot/admin/ltiuserprefs.php?cid=$cid&greybox=true',800,'auto');return false;\" title=\""._('User Preferences')."\" aria-label=\""._('Edit User Preferences')."\">";
+			echo "<a href=\"#\" onclick=\"GB_show('"._('User Preferences')."','$imasroot/admin/ltiuserprefs.php?cid=$cid&greybox=true',800,'auto');return false;\" title=\""._('User Preferences')."\">";
 			echo "<span id=\"myname\" class=\"pii-full-name\">".Sanitize::encodeStringForDisplay($userfullname)."</span>";
-			echo "<img style=\"vertical-align:top\" src=\"$staticroot/img/gears.png\" alt=\"\"/></a>";
+			echo "<img style=\"vertical-align:top\" src=\"$staticroot/img/gears.png\" alt=\""._('User Preferences')."\"/></a>";
 		} else {
 			echo '<span class="pii-full-name">'.Sanitize::encodeStringForDisplay($userfullname).'</span>';
 		}
@@ -511,11 +517,12 @@ if ($overwriteBody==1) {
 		echo '<a href="showcalendar.php?cid=' . $cid . '">' . _('Calendar') . '</a><br/>';
 		echo '<a href="coursemap.php?cid=' . $cid . '">' . _('Course Map') . '</a><br/>';
 		echo '<a href="#" class="togglecontrol" aria-controls="navtoolmore">' . _('More...') . '</a>';
-	  echo '<span id="navtoolmore" style="display:none">';
+	  	echo '<span id="navtoolmore" style="display:none">';
 		echo '<br/>&nbsp;<a href="coursereports.php?cid=' . $cid . '">' . _('Reports') . '</a><br/>';
 		echo '&nbsp;<a href="managestugrps.php?cid=' . $cid . '">' . _('Groups') . '</a><br/>';
 		echo '&nbsp;<a href="addoutcomes.php?cid=' . $cid . '">' . _('Outcomes') . '</a><br/>';
-		echo '&nbsp;<a href="addrubric.php?cid=' . $cid . '">' . _('Rubrics') . '</a>';
+		echo '&nbsp;<a href="addrubric.php?cid=' . $cid . '">' . _('Rubrics') . '</a><br/>';
+		echo '&nbsp;<a href="mergeassess2.php?cid=' . $cid . '">' . _('Merge Assessments') . '</a><br/>';
 		echo '</span>';
 		echo '</p>';
 	}
@@ -592,11 +599,16 @@ if ($overwriteBody==1) {
 		}
 		echo '<a href="coursemap.php?cid='.$cid.'">'._('Course Map').'</a>';
 		echo '</p>';
+        if (($toolset&4)==0) {
+            echo '<p><a href="gradebook.php?cid='. $cid .'" class="essen">' . _('Gradebook') . '</a> ';
+            if (($coursenewflag&1)==1) {
+                echo '<span class="noticetext">', _('New'), '</span>';
+            }
+            echo '</p>';
+        }
 	?>
 
-			<p>
-			<a href="gradebook.php?cid=<?php echo $cid ?>" class="essen"><?php echo _('Gradebook'); ?></a> <?php if (($coursenewflag&1)==1) {echo '<span class="noticetext">', _('New'), '</span>';}?>
-			</p>
+			
 	<?php
 		if (count($stuLeftNavBlocks)>0) {
 			echo '<p class=leftnavp><b>'._('Quick Links').'</b>';
@@ -676,7 +688,7 @@ if ($overwriteBody==1) {
    }
 }
 
-require("../footer.php");
+require_once "../footer.php";
 
 function makeTopMenu() {
 	global $teacherid;

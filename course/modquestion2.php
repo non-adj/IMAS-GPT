@@ -3,8 +3,8 @@
 //(c) 2019 David Lippman
 
 /*** master php includes *******/
-require "../init.php";
-require "../includes/htmlutil.php";
+require_once "../init.php";
+require_once "../includes/htmlutil.php";
 require_once "../includes/TeacherAuditLog.php";
 
 //set some page specific variables and counters
@@ -39,6 +39,9 @@ if (!(isset($teacherid))) {
     $curBreadcrumb .= _("Modify Question Settings");
 
     if (!empty($_GET['process'])) {
+        $stm = $DBH->prepare("SELECT itemorder,defpoints,intro FROM imas_assessments WHERE id=:id");
+        $stm->execute(array(':id' => $aid));
+        list($itemorder, $defpoints, $intro) = $stm->fetch(PDO::FETCH_NUM);
         if (isset($_GET['usedef'])) {
             $points = 9999;
             $attempts = 9999;
@@ -53,6 +56,9 @@ if (!(isset($teacherid))) {
             $_POST['copies'] = 1;
         } else {
             if (trim($_POST['points']) == "") {$points = 9999;} else { $points = intval($_POST['points']);}
+            if ($points == $defpoints) {
+                $points = 9999;
+            }
             if (trim($_POST['attempts']) == "" || intval($_POST['attempts']) <= 0) {
                 $attempts = 9999;
             } else {
@@ -63,6 +69,10 @@ if (!(isset($teacherid))) {
             if (trim($_POST['fixedseeds']) == "") {$fixedseeds = null;} else { $fixedseeds = trim($_POST['fixedseeds']);}
             if ($penalty != 9999) {
                 $penalty_aftern = Sanitize::onlyInt($_POST['penalty_aftern']);
+                if ($penalty_aftern > 9) {
+                    echo "after __ tries must be less than 10";
+                    exit;
+                }
                 if ($penalty_aftern > 1 && $attempts > 1) {
                     $penalty = 'S' . $penalty_aftern . $penalty;
                 }
@@ -81,6 +91,11 @@ if (!(isset($teacherid))) {
                 (empty($_POST['showhints4']) ? 0 : 4)
             );
             $extracredit = !empty($_POST['ec']) ? 1 : 0;
+
+            if ($beentaken) {
+                // prevent adding copies if beentaken
+                $_POST['copies'] = 0;
+            }
         }
         if (isset($_GET['id'])) { //already have id - updating
             $stm = $DBH->prepare("SELECT * FROM imas_questions WHERE id=?");
@@ -125,12 +140,29 @@ if (!(isset($teacherid))) {
                 $stm->execute(array(':id' => $_GET['id']));
                 $_GET['qsetid'] = $stm->fetchColumn(0);
             }
+
+            // see if question was in group if points changed, and change others in group to same
+            if ($old_settings['points'] != $points) {
+                $aitems = explode(',', $itemorder);
+                foreach ($aitems as $v) {
+                    if ($v == $_GET['id']) { break; }
+                    else if (is_numeric($v)) { continue; }
+                    $sub = explode('~', $v);
+                    if (in_array($_GET['id'], $sub)) {
+                        $grpparts = explode('|',$sub[0]);
+				        if (strpos($sub[0],'|')!==false && $grpparts[0]<count($sub)-1) { // only standardize points if n < count
+                            array_shift($sub);
+                            $tofix = implode(',', array_map('intval', $sub));
+                            $stm = $DBH->prepare("UPDATE imas_questions SET points=? WHERE id IN ($tofix)");
+                            $stm->execute([$points]);
+                        }
+                        break;
+                    }
+                }
+            }
         }
         require_once "../includes/updateptsposs.php";
         if (isset($_GET['qsetid'])) { //new - adding
-            $stm = $DBH->prepare("SELECT itemorder,defpoints,intro FROM imas_assessments WHERE id=:id");
-            $stm->execute(array(':id' => $aid));
-            list($itemorder, $defpoints, $intro) = $stm->fetch(PDO::FETCH_NUM);
             for ($i = 0; $i < $_POST['copies']; $i++) {
                 $query = "INSERT INTO imas_questions (assessmentid,points,attempts,penalty,regen,showans,showwork,questionsetid,rubric,showhints,fixedseeds,extracredit) ";
                 $query .= "VALUES (:assessmentid, :points, :attempts, :penalty, :regen, :showans, :showwork, :questionsetid, :rubric, :showhints, :fixedseeds, :extracredit)";
@@ -317,7 +349,7 @@ $(function() {
     });
 });
 </script>';
-require "../header.php";
+require_once "../header.php";
 
 if ($overwriteBody == 1) {
     echo $body;
@@ -362,7 +394,7 @@ if (!isset($_GET['id']) || $beentaken) {
 <span class=form><?php echo _("Penalty on Tries:"); ?></span>
 <span class=formright><input type=text size=2 name=penalty value="<?php echo Sanitize::encodeStringForDisplay($line['penalty']); ?>">
   <?php echo sprintf(_('%% per try after %s full-credit tries'),
-        '<input type=text size=1 name="penalty_aftern" value="' . Sanitize::encodeStringForDisplay($penalty_aftern) . '">'); ?>
+        '<input type=number min=1 max=9 size=1 name="penalty_aftern" value="' . Sanitize::encodeStringForDisplay($penalty_aftern) . '">'); ?>
    <br/><i class="grey"><?php echo _('Default:'); ?> <?php echo Sanitize::encodeStringForDisplay($defaults['penalty']); ?></i>
 </span><BR class=form>
 <?php
@@ -466,5 +498,5 @@ if (isset($_GET['qsetid'])) { //adding new question
     echo '</form>';
 }
 
-require "../footer.php";
+require_once "../footer.php";
 ?>

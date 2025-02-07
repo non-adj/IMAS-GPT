@@ -1,4 +1,7 @@
-<html><body>
+<!DOCTYPE html>
+<html lang="en"><head>
+    <title>stats help</title>
+</head><body>
 <h1>Macro Library stats</h1>
 A library of Stats functions.  Version 1.30, Nov 20, 2021
 <BR><ul>
@@ -25,10 +28,17 @@ A library of Stats functions.  Version 1.30, Nov 20, 2021
 <li><a href="#countif">countif</a></li>
 <li><a href="#histogram">histogram</a></li>
 <li><a href="#fdhistogram">fdhistogram</a></li>
+<li><a href="#stem_plot">stem_plot</a></li>
 <li><a href="#fdbargraph">fdbargraph</a></li>
+<li><a href="#cluster_bargraph">cluster_bargraph</a></li>
 <li><a href="#piechart">piechart</a></li>
 <li><a href="#normrand">normrand</a></li>
 <li><a href="#expdistrand">expdistrand</a></li>
+<li><a href="#stats_randg">stats_randg</a></li>
+<li><a href="#stats_randF">stats_randF</a></li>
+<li><a href="#stats_randt">stats_randt</a></li>
+<li><a href="#stats_randchi2">stats_randchi2</a></li>
+<li><a href="#stats_randpoisson">stats_randpoisson</a></li>
 <li><a href="#boxplot">boxplot</a></li>
 <li><a href="#normalcdf">normalcdf</a></li>
 <li><a href="#tcdf">tcdf</a></li>
@@ -45,6 +55,8 @@ A library of Stats functions.  Version 1.30, Nov 20, 2021
 <li><a href="#invchi2cdf">invchi2cdf</a></li>
 <li><a href="#fcdf">fcdf</a></li>
 <li><a href="#invfcdf">invfcdf</a></li>
+<li><a href="#poissonpdf">poissonpdf</a></li>
+<li><a href="#poissoncdf">poissoncdf</a></li>
 <li><a href="#gamma_cdf">gamma_cdf</a></li>
 <li><a href="#gamma_inv">gamma_inv</a></li>
 <li><a href="#beta_cdf">beta_cdf</a></li>
@@ -58,6 +70,7 @@ A library of Stats functions.  Version 1.30, Nov 20, 2021
 <li><a href="#anova2way_f">Two-way ANOVA: F ratios/P values </a></li>
 <li><a href="#anova_table">ANOVA Table</a></li>
 <li><a href="#student_t">Two-sample student t-test</a></li>
+
 </ul>
 <h3><a name="nCr">nCr</a></h3>
 nCr(n,r)
@@ -186,6 +199,26 @@ fdhistogram(freqarray,label,start,cw,[labelstart,upper,width,height,showgrid,fil
 <BR>&nbsp;showgrid (optional): the horizontal grid lines; default is true to show; set false to hide
 <BR>&nbsp;fill (optional) = the fill color of the bins; default is blue
 <BR>&nbsp;stroke (optional) = the line color of the bins; default is black
+<p>To fill in only some optional parameters, the 5th argument can instead be an associate array 
+ of values to fill in, like ['width'=>500, 'fill'=>'blue'].  When used this way, 'vertlabel' can 
+ be used to change the vertical axis label.</p>
+ <h3><a name="stem_plot"></a><strong>stem_plot</strong>(data, [options])</h3>
+ <p>The function stem_plot() produces a basic stem-and-leaf display. </p>
+ <p><em>Parameters:</em></p>
+ <ul>
+     <li><strong>data</strong>: array of data.</li>
+     <li><strong>options</strong>(optional): array of options:</li>
+     <ul>
+         <li>options['key'] = false will remove key. For example, by default there is a key such as Key: 3|4 means 34 and will be removed if false. If $options['customkey'] is set, then options['key'] will be ignored.</li>
+         <li>options['customkey'] = string for a custom key.</li>
+         <li>options['space'] = false will remove the space between each leaf digit. By default the spacing looks like 3| 1 2 2 3 4 5, setting to false will yield 3|122345.</li>
+         <li>options['stemlabel'] = string for a custom label for Stem.</li>
+         <li>options['leaflabel'] = string for a custom label for Leaf.</li>
+         <li>options['split'] = true will make a split stem-and-leaf display. For example, a stem such as 3|2345789 will be split to two stems 3|234 and 3|5789.</li>
+     </ul>
+ </ul>
+ <p>&nbsp;<em>Returns:</em></p>
+ <p>Stem-and-leaf display</p>
 <BR><h3><a name="fdbargraph">fdbargraph</a></h3>
 fdbargraph(barlabels,freqarray,label,[width,height,options])
 <BR>barlabels: array of labels for the bars
@@ -200,6 +233,34 @@ fdbargraph(barlabels,freqarray,label,[width,height,options])
 <BR>&nbsp;&nbsp;options['toplabel'] = label for top of chart
 <BR>&nbsp;&nbsp;options['fill'] = fill color of the bars; default is blue
 <BR>&nbsp;&nbsp;options['stroke'] = line color of the bars; default is black
+
+<h3><a name="cluster_bargraph"></a><strong>cluster_bargraph</strong>(var1labels, var2labels,freqarray,label,[width,height,options])</h3>
+<p>The function cluster_bargraph() graphs a cluster bar graph also known as group bar chart or mult-series bar chart. </p>
+<p><em>Parameters:</em></p>
+<ul>
+    <li><strong>var1labels</strong>: array of labels for the categories for variable 1 which appear on the horizontal axis </li>
+    <li><strong>var2labels</strong>: array of labels for the categories for variable 2 which appears in the legend.</li>
+    <li><strong>freqarray</strong>: array of arrays holding the frequencies/heights for each bar. Note: freqarray should have the form [[1,3,5],[5,3,5],[1,3,2],[3,6,4]] or 
+    array(array(1,3,5),array(5,3,5),array(1,3,2),array(3,6,4)), which corresponds to variable 1 having 3 categories (3 clusters) and variable 2 having 4 categories (4 bars for each cluster).</li>
+    <li><strong>label</strong>: general label for bars</li>
+    <li><strong>width</strong>,<strong>height</strong>(optional): width and height for graph</li>
+    <li><strong>options</strong>(optional): array of options:</li>
+    <ul>
+        <li>options['valuelabels'] = array of value labels, to be placed above each bar</li>
+        <li>options['showgrid'] = false to hide the horizontal grid lines</li>
+        <li>options['vertlabel'] = label for vertical axis. Defaults to none</li>
+        <li>options['gap'] = gap (0 &le; gap &lt; 1) between bars</li>
+        <li>options['toplabel'] = label for top of chart</li>
+        <li>options['colors'] = array of colors for each bar in the clusters</li>
+        <li>options['stroke'] = line color of the bars; default is black</li>
+        <li>options['var1name'] = a string for the variable 1 name for alternative text </li>
+        <li>options['var2name'] = a string for the variable 2 name for alternative text </li>
+    </ul>
+</ul>
+<p>&nbsp;<em>Returns:</em></p>
+<p>Cluster bargraph</p>
+<p>&nbsp;</p>
+     
 <BR><h3><a name="piechart">piechart</a></h3>
 piechart(percents, labels, {width, height})
 <BR>create a piechart
@@ -207,16 +268,40 @@ piechart(percents, labels, {width, height})
 <BR>labels: array of labels for each pie piece
 <BR>uses Google Charts API
 <BR><h3><a name="normrand">normrand</a></h3>
-normrand(mu,sigma,n, [rnd, positive])
+normrand(mu,sigma,n, [rnd, positive, skew])
 <BR>returns an array of n random numbers that are normally distributed with given
 <BR>mean mu and standard deviation sigma.  Uses the Box-Muller transform.
 <BR>specify rnd to round to that many digit
 <BR>set positive to true to not include negative values
+<BR>set skew to a nonzero value to skew the data
 <BR><h3><a name="expdistrand">expdistrand</a></h3>
 expdistrand(mu, n, [rnd])
 <BR>returns an array of n random numbers that are exponentially distributed
 <BR>with given mean mu.
 <BR>specify rnd to round to that many digits (default 3)
+
+<h3><a name="stats_randg">stats_randg</a></h3>
+<p>stats_randg(shape, n)</p>
+<p>returns an array of n random numbers from a gamma distribution</p>
+
+<h3><a name="stats_randF">stats_randF</a></h3>
+<p>stats_randF(df1, df2, n)</p>
+<p>returns an array of n random numbers from an F disstribution with df1 and df2 degrees of freedom</p>
+
+<h3><a name="stats_randt">stats_randt</a></h3>
+<p>stats_randt(mu, sigma, df, n)</p>
+<p>returns an array of n random numbers from a t-distribution with given mean mu,
+    standard distribution sigma, and degrees of freedom df.
+</p>
+
+<h3><a name="stats_randchi2">stats_randchi2</a></h3>
+<p>stats_randchi2(df, n)</p>
+<p>returns an array of n random numbers from a chi squared distribution with df degrees of freedom</p>
+
+<h3><a name="stats_randpoisson">stats_randpoisson</a></h3>
+<p>stats_randpoisson(lambda, n)</p>
+<p>returns an array of n random numbers from a Poisson distribution with parameter lambda.</p>
+
 <BR><h3><a name="boxplot">boxplot</a></h3>
 boxplot(array,axislabel,[options])
 <BR>draws a boxplot based on the data in array, with given axislabel
@@ -273,14 +358,15 @@ checklineagainstdata(xarray, yarray, student answer, [variable, alpha])
 <BR>alpha: for confidence bound.  defaults to .05
 <BR>return array(answer, showanswer) to be used to set $answer and $showanswer
 <BR><h3><a name="checkdrawnlineagainstdata">checkdrawnlineagainstdata</a></h3>
-checkdrawnlineagainstdata(xarray, yarray, student answer, [grade dots, alpha, grid])
+checkdrawnlineagainstdata(xarray, yarray, student answer, [grade dots, alpha, grid, snaptogrid])
 <BR>intended for checking a student answer for drawing a line fit to data.  Determines
 <BR>if the student answer is within the confidence bounds for the regression equation.
 <BR>xarray, yarray:  list/array of data values
 <BR>student answer from draw:  the $stuanswers[$thisq]
 <BR>grade dots: default false.  If true, will grade that dots of xarray,yarray were plotted
 <BR>alpha: for confidence bound.  defaults to .05
-<BR>grid:  If you've modified the grid, include it here
+<BR>grid:  If you've modified the grid, include it here 
+<BR>snaptogrid: If you're using snaptogrid, include it here
 <BR>return array(answer, showanswer) to be used to set $answer and $showanswer
 <BR><h3><a name="binomialpdf">binomialpdf</a></h3>
 binomialpdf(N,p,x)
@@ -312,6 +398,14 @@ invfcdf(p,df1,df2)
 <BR>with degrees of freedom df1 and df2
 <BR>Algorithm is accurate to approximately 2-4 decimal places
 <BR>Less accurate for smaller p-values
+<BR><h3><a name="poissonpdf">poissonpdf</a></h3>
+poissonpdf(lambda, x)
+<BR>Computes the probability of x events
+<BR>with an expectation of lambda events
+<BR><h3><a name="poissoncdf">poissoncdf</a></h3>
+poissoncdf(lambda, x)
+<BR>Computes the probability of &lt;=x events
+<BR>with an expectation of lambda events
 <h3><a name="gamma_cdf">gamma_cdf</a></h3>
 gamma_cdf(x,shape,[scale,offset])
 <BR>Calculated the gamma cdf
@@ -343,8 +437,8 @@ dotplot(array,label,[dotspacing,labelspacing,width,height])
 <BR>Display macro.  Creates a dotplot from a data set
 <BR> array: array of data values
 <BR> label: title of the dotplot that will be placed below the horizontal axis
-<BR> dot spacing (default 1): horiz spacing of dots; data will be rounded to nearest value
-<br> axis spacing (defaults to dot spacing): spacing of axis labels 
+<BR> dotspacing (default 1): horiz spacing of dots; data will be rounded to nearest value
+<br> labelspacing (defaults to dot spacing): spacing of axis labels 
 <BR> width,height (default 300x150): width and height in pixels of graph
   <p>&nbsp;</p>
   <p><h3><a name="anova1way"></a><strong>anova1way</strong>(arr1, arr2, [arr3, ...])</h3></p>
@@ -438,3 +532,5 @@ dotplot(array,label,[dotspacing,labelspacing,width,height])
   <p>&nbsp;<em>Returns:</em></p>
   <p>t statistic, corresponding P-value (area to the right of t-value -  one-tail), and degree of freedom for two sample student t-test as an array in the form [t, P-value, df].</p>
   <p>&nbsp;</p> 
+
+  

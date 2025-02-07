@@ -10,7 +10,8 @@ array_push($allowedmacros,"chem_disp","chem_mathdisp","chem_isotopedisp",
 "chem_randelementbyfamily","chem_diffrandelementsbyfamily", 
 "chem_getrandcompound", "chem_getdiffrandcompounds","chem_decomposecompound",
 "chem_getcompoundmolmass","chem_randanion","chem_randcation",
-"chem_makeioniccompound","chem_getsolubility");
+"chem_makeioniccompound","chem_getsolubility","chem_balancereaction", "chem_eqndisp",
+"chem_showmolecule", "chem_vsepr");
 
 //chem_disp(compound)
 //formats a compound for display in as HTML
@@ -217,37 +218,182 @@ function chem_getdiffrandcompounds($c, $type="twobasic,twosub,threeplus,parens")
 	return $out;
 }
 
-//chem_decomposecompound(compound)
-//breaks a compound into an array of elements and an array of atom counts
-function chem_decomposecompound($c) {
-	$cout = array();
-	if (preg_match('/\(([^\)]*)\)_(\d+)/',$c,$matches)) {
-		$p = explode(' ',$matches[1]);
-		foreach ($p as $cb) {
-			$cbp = explode('_',$cb);
-			if (!isset($cout[$cbp[0]])) { $cout[$cbp[0]] = 0;}
-			if (count($cbp)==1) {
-				$cout[$cbp[0]] += $matches[2];
+// Recursive function to process the formula
+function chem_internal_processFormula($formula, $multiplier, &$result) {
+	// Regex to match atomic groups, elements, and parentheses
+	preg_match_all('/\(([^()]+)\)(\d*)|([A-Z][a-z]*)(\d*)/', $formula, $matches, PREG_SET_ORDER);
+
+	foreach ($matches as $match) {
+		if (!empty($match[1])) {
+			// It's a group within parentheses
+			$group = $match[1];
+			$groupMultiplier = (int)($match[2] ?: 1) * $multiplier;
+			chem_internal_processFormula($group, $groupMultiplier, $result);
+		} elseif (!empty($match[3])) {
+			// It's an individual element
+			$element = $match[3];
+			$count = (int)($match[4] ?: 1) * $multiplier;
+			if (isset($result[$element])) {
+				$result[$element] += $count;
 			} else {
-				$cout[$cbp[0]] += $matches[2]*$cbp[1];
+				$result[$element] = $count;
 			}
 		}
-		$c = str_replace($matches[0],'',$c);
 	}
-	$p = explode(' ',trim($c));
-	foreach ($p as $cb) {
-		if ($cb=='') {continue;}
-		$cbp = explode('_',$cb);
-		if (!isset($cout[$cbp[0]])) { $cout[$cbp[0]] = 0;}
-		if (count($cbp)==1) {
-			$cout[$cbp[0]] += 1;
-		} else {
-			$cout[$cbp[0]] += $cbp[1];
-		}
-	}
-	return array(array_keys($cout),array_values($cout));
 }
 
+//chem_decomposecompound(compound)
+//breaks a compound into an array of elements and an array of atom counts
+function chem_decomposecompound($c, $assoc = false) {
+	$cout = [];
+
+    $c = str_replace('_','',$c);
+
+    // Start processing the formula
+    chem_internal_processFormula($c, 1, $cout);
+
+	if ($assoc) { 
+		return $cout;
+	} else {
+		return array(array_keys($cout),array_values($cout));
+	}
+}
+
+//chem_balanceraction($reactants,$products)
+function chem_balancereaction($reactants,$products) {
+	$allcompounds = [];
+	foreach ($reactants as $i=>$v) {
+		$reactants[$i] = chem_decomposecompound($v, true);
+		array_push($allcompounds, ...array_keys($reactants[$i]));
+	}
+	foreach ($products as $i=>$v) {
+		$products[$i] = chem_decomposecompound($v, true);
+		array_push($allcompounds, ...array_keys($products[$i]));
+	}
+	$allcompounds = array_values(array_unique($allcompounds));
+	$compoundrow = array_flip($allcompounds);
+	require_once "matrix.php";
+	$countreact = count($reactants);
+	$countprods = count($products);
+	$colcnt = $countreact + $countprods;
+	$compoundcnt = count($allcompounds);
+	$m = matrix(
+		array_fill(0, $compoundcnt*$colcnt, 0),
+		$compoundcnt,
+		$colcnt
+	);
+	// in m, row is compound, column is element in equation
+	foreach ($allcompounds as $i=>$c) {
+		$r = $compoundrow[$c];
+		foreach ($reactants as $i=>$v) {
+			if (isset($v[$c])) {
+				$m[$r][$i] = $v[$c];
+			}
+		}
+		foreach ($products as $i=>$v) {
+			if (isset($v[$c])) {
+				$m[$r][$countreact + $i] = -$v[$c];
+			}
+		}
+	}
+	// now, reduce matrix
+	$m = matrixreduce($m, true, true);
+	/*  each row corresponds to an atom, each column to a compound
+		determine the number of free variable columns
+		    if many more compounds than atoms, might have multiple free vars
+			if unbalancable, might have zero free variables (only solution all zeros)
+			start at last row, ignore any all-zero rows.  
+			in first non-zero row, find pivot and count remaining cols to find free vars
+			assumption: free variables in these equations will always be in end columns
+		parse each value to fraction
+		find LCM of denominators in each column; set free variable to that
+		calculate values of basic variables
+	*/
+	$freevars = 0;
+	for ($r=$compoundcnt-1;$r>=0;$r--) {
+		if (!arrayIsZeroVector($m[$r])) {
+			for ($c=0;$c<$colcnt;$c++) {
+				if ($m[$r][$c] != 0) {
+					$freevars = $colcnt - $c - 1;
+					break 2;
+				}
+			}
+		}
+	}
+	if ($freevars == 0) { // un-balanceable; return array of zeros
+		return array_fill(0, $colcnt, 0);
+	}
+	$coeffs = [];
+	$freevarvals = [];
+	for ($c = 0; $c < $freevars; $c++) {
+		$coeffs[$c] = [];
+		$d = 1;
+		for ($r = 0; $r < $compoundcnt; $r++) {
+			$coeffs[$c][$r] = fractionparse($m[$r][$colcnt - $freevars + $c]);
+			// find lcm of denominators - that'll be our free variable value
+			$d = lcm($d, $coeffs[$c][$r][1]);
+		}
+		$freevarvals[$c] = $d;
+	}
+	$out = [];
+	for ($r=0; $r < $colcnt - $freevars; $r++) {
+		$out[$r] = 0;
+		for ($c = 0; $c < $freevars; $c++) {
+			$out[$r] -= $coeffs[$c][$r][0]*$freevarvals[$c]/$coeffs[$c][$r][1];
+		}
+	}
+	foreach ($freevarvals as $v) {
+		$out[] = $v;
+	}
+	if ($freevars > 1) {
+		$g = gcd(array_filter($out));
+		if ($g > 1) {
+			for ($i=0; $i<count($out); $i++) {
+				$out[$i] /= $g;
+			}
+		}
+	}
+	return $out;
+}
+
+function chem_eqndisp($reactants, $products, $coefficients, $arrow = "->", $phases = null) {
+	$out = '';
+	$n = -1;
+	foreach ($reactants as $i=>$r) {
+		$n++;
+		if ($coefficients[$n] == 0) {
+			continue;
+		} 
+		if ($i>0) {
+			$out .= ' + ';
+		}
+		if ($coefficients[$n] > 1) { 
+			$out .= $coefficients[$n] . ' ';
+		}
+		$out .= $r;
+		if (is_array($phases) && !empty($phases[$n])) {
+			$out .= ' ('. trim($phases[$n], ' ()') .')';
+		}
+	}
+	$out .= " $arrow ";
+	foreach ($products as $i=>$r) {
+		$n++;
+		if ($coefficients[$n] == 0) {
+			continue;
+		} 
+		if ($i>0) {
+			$out .= ' + ';
+		}
+		if ($coefficients[$n] > 1) { 
+			$out .= $coefficients[$n] . ' ';
+		}
+		$out .= $r;
+		if (is_array($phases) && !empty($phases[$n])) {
+			$out .= ' ('. trim($phases[$n], ' ()') .')';
+		}
+	}
+	return $out;
+}
 
 //chem_getcompoundmolmass(compound, [round])
 //gets the molecular mass of the given compound
@@ -313,7 +459,8 @@ function chem_randanion($group="all", $type="common", $uncommon = false) {
 	if ($group=="polyatomic") {
 		$pickfrom = range(10,36);
 	} else {
-		$pickfrom = range(0,8);
+		$pickfrom = range(0,7);
+		$pickfrom[] = 4; // avoid carbide without breaking other randomizations
 	}
 	if ($uncommon && $group != 'polyatomic') {
 		$pickfrom[] = 9;
@@ -672,22 +819,22 @@ $GLOBALS['chem_periodic_table'] = array(
         18=>array("Ar", "Argon", 18,39.948, "-189.2", "-185.7", "Noble gas"),
         19=>array("K", "Potassium", 19,39.0983, "63.25", "759.9", "Alkaline"),
         20=>array("Ca", "Calcium", 20,40.078, "839", "1484", "Alkaline Earth"),
-        21=>array("Sc", "Scandium", 21,44.9579, "1541", "2836", "Transition Metal"),
-        22=>array("Ti", "Titanium", 22,47.88, "1660", "3287", "Transition Metal"),
+        21=>array("Sc", "Scandium", 21,44.956, "1541", "2836", "Transition Metal"),
+        22=>array("Ti", "Titanium", 22,47.867, "1660", "3287", "Transition Metal"),
         23=>array("V", "Vanadium", 23,50.9415, "1890", "3380", "Transition Metal"),
         24=>array("Cr", "Chromium", 24,51.996, "1857", "2672", "Transition Metal"),
         25=>array("Mn", "Manganese", 25,54.9380, "1244", "1962", "Transition Metal"),
-        26=>array("Fe", "Iron", 26,55.847, "1535", "2750", "Transition Metal"),
+        26=>array("Fe", "Iron", 26,55.845, "1535", "2750", "Transition Metal"),
         27=>array("Co", "Cobalt", 27,58.9332, "1857", "2672", "Transition Metal"),
-        28=>array("Ni", "Nickel", 28,58.69, "1453", "2732", "Transition Metal"),
+        28=>array("Ni", "Nickel", 28,58.693, "1453", "2732", "Transition Metal"),
         29=>array("Cu", "Copper", 29,63.546, "1083", "2567", "Transition Metal"),
         30=>array("Zn", "Zinc", 30,65.38, "419.58", "907", "Transition Metal"),
         31=>array("Ga", "Gallium", 31,69.72, "29.78", "2403", ""),
-        32=>array("Ge", "Germanium", 32,72.59, "937.4", "2830", ""),
+        32=>array("Ge", "Germanium", 32,72.63, "937.4", "2830", ""),
         33=>array("As", "Arsenic", 33,74.9216, "817", "613", ""),
         34=>array("Se", "Selenium", 34,78.96, "50 (amorphous), 217 (gray form)", "685", ""),
         35=>array("Br", "Bromine", 35,79.904, "-7.2", "58.78", "Halogen"),
-        36=>array("Kr", "Krypton", 36,83.80, "-156.6", "-152.30", "Noble gas"),
+        36=>array("Kr", "Krypton", 36,83.798, "-156.6", "-152.30", "Noble gas"),
         37=>array("Rb", "Rubidium", 37,85.4678, "38.89", "686", "Alkaline"),
         38=>array("Sr", "Strontium", 38,87.62, "769", "1384", "Alkaline Earth"),
         39=>array("Y", "Yttrium", 39,88.9059, "1522", "5338", "Transition Metal"),
@@ -701,7 +848,7 @@ $GLOBALS['chem_periodic_table'] = array(
         47=>array("Ag", "Silver", 47,107.8682, "961.93", "2212", "Transition Metal"),
         48=>array("Cd", "Cadmium", 48,112.41, "320.9", "765", "Transition Metal"),
         49=>array("In", "Indium", 49,114.82, "156.61", "2080", ""),
-        50=>array("Sn", "Tin", 50,118.69, "231.97", "2270", ""),
+        50=>array("Sn", "Tin", 50,118.71, "231.97", "2602", ""),
         51=>array("Sb", "Antimony", 51,121.76, "630.74", "1750", ""),
         52=>array("Te", "Tellurium", 52,127.60, "449.5", "4877", ""),
         53=>array("I", "Iodine", 53,126.9045, "113.5", "184.35", "Halogen"),
@@ -841,7 +988,7 @@ $GLOBALS['chem_anions'] = array(
 	array('S',2,'sulfide','','s'), //common
 	array('N',3,'nitride','','s'), //common
 	array('P',3,'phosphide','','s'), //common
-	array('C',4,'carbide','','s'), //common 8
+	array('C',4,'carbide','','s'), //common 8 // NOT USED
 	array('Se',2,'selenide','','s'),
 	array('C_2 H_3 O_2',1,'acetate','','pa'), //common  10
 	array('Cl O',1,'hypochlorite','','pa'), //common
@@ -892,11 +1039,11 @@ $GLOBALS['chem_compounds'] = array(
 		array('Hydrochloric acid','H Cl'),
 		array('Hydrogen fluoride','H F'),
 		array('Iodine monochloride','I Cl'),
-		array('Cyanogen iodide','I CN'),
+		array('Cyanogen iodide','I C N'),
 		array('Indium nitride','In N'),
 		array('Potassium bromide','K Br'),
 		array('Potassium chloride','K Cl'),
-		array('Potassium cyanide','K CN'),
+		array('Potassium cyanide','K C N'),
 		array('Potassium iodide','K I'),
 		array('Lithium bromide','Li Br'),
 		array('Lithium chloride','Li Cl'),
@@ -1137,3 +1284,71 @@ $GLOBALS['chem_compounds'] = array(
 		array('Zinc cyanide','Zn (C N)_2')
 	)
 );
+
+function chem_showmolecule($data, $width=300, $height=225, $alt='', $format='') {
+    $data = explode('~~~', $data);
+    if ($_SESSION['graphdisp']==0) {
+        if ($alt != '') { 
+            return $alt; 
+        }
+        return _('Molecule in SMILES format:') . $data[0];
+    }
+    $out = '<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/kekule@1.0.2/dist/kekule.min.js?module=chemWidget,IO"></script>';
+    $out .= '<script type="text/javascript">
+        if (!$("link[href=\'https://cdn.jsdelivr.net/npm/kekule@1.0.2/dist/themes/default/kekule.min.css\']").length) {
+            $(\'<link href="https://cdn.jsdelivr.net/npm/kekule@1.0.2/dist/themes/default/kekule.min.css" rel="stylesheet">\').appendTo("head");
+        }
+    </script>';
+    $uniqid = uniqid('mol');
+    $out .= '<div id="'.$uniqid.'" width='.Sanitize::onlyInt($width).' height='.Sanitize::onlyInt($height).' ></div>';
+    $out .= '<script>
+        var chemSAViewer'.$uniqid.' = new Kekule.ChemWidget.Viewer(document.getElementById("'.$uniqid.'"), null, Kekule.Render.RendererType.R2D);
+        chemSAViewer'.$uniqid.'.setPredefinedSetting("static")
+        .setPadding(20)
+        .setChemObj(Kekule.IO.loadFormatData("'.Sanitize::encodeStringForJavascript($data[1]).'", "cml"))';
+	if ($format == 'condensed') {
+		$out .= '.setMoleculeDisplayType(Kekule.Render.Molecule2DDisplayType.CONDENSED)';
+	}
+	$out .= ';';
+	$out .= '</script>';
+    return $out;
+}
+
+
+// Information from:
+	// https://chem.libretexts.org/Courses/Bellarmine_University/BU%3A_Chem_103_(Christianson)/Phase_3%3A_Atoms_and_Molecules_-_the_Underlying_Reality/10%3A_Molecular_Structure_and_Geometry/10.3%3A_VSEPR_Geometry
+$GLOBALS['chem_vsepr_geometries'] = array(
+	// Steric Number => array( array(Molecular Geometry, Electron Geometry, Bond Angle, Polarity (assuming equal electronegativity), Hybridization) )
+	// Steric 2
+	array( 	array('Linear','Linear','180', 'Nonpolar', 'sp')),
+	// Steric 3
+	array( 	array('Trigonal Planar', 'Trigonal Planar', '120', 'Nonpolar', 'sp^2'), 
+				array('Bent', 'Trigonal Planar','<120', 'Polar', 'sp^2')),
+	// Steric 4
+	array(	array('Tetrahedral','Tetrahedral', '109.5', 'Nonpolar', 'sp^3'),
+				array('Trigonal Pyramidal', 'Tetrahedral','<109.5', 'Polar', 'sp^3'), 
+				array('Bent','Tetrahedral','<109.5', 'Polar', 'sp^3')),
+	// Steric 5
+	array(	array('Trigonal Bipyramidal', 'Trigonal Bipyramidal', '120, 90', 'Nonpolar', 'sp^3d'),
+				array('Seesaw', 'Trigonal Bipyramidal', '<120, <90', 'Polar', 'sp^3d'),
+				array('T-Shaped', 'Trigonal Bipyramidal', '<90', 'Polar', 'sp^3d'),
+				array('Linear', 'Trigonal Bipyramidal', '180', 'Nonpolar', 'sp^3d')),
+	// Steric 6
+	array(	array('Octahedral', 'Octahedral', '90', 'Nonpolar', 'sp^3d^2'),
+				array('Square Pyramidal', 'Octahedral', '<90', 'Polar', 'sp^3d^2'),
+				array('Square Planar', 'Octahedral', '90', 'Nonpolar', 'sp^3d^2')),
+);
+
+function chem_vsepr($steric_number, $lone_pairs){
+	global $chem_vsepr_geometries;
+	$steric_index = $steric_number - 2;
+	if (!isset($chem_vsepr_geometries[$steric_index])) {
+        echo "chem_vsepr: unknown steric number $steric_number";
+        return '';
+    }
+	if ($lone_pairs > $steric_index) {
+        echo "chem_vsepr: invalid number of lone pairs";
+        return '';
+    }
+	return $chem_vsepr_geometries[$steric_index][$lone_pairs];
+}

@@ -35,6 +35,7 @@
    	2: open dot
    tptypes
 	5: line
+	5.1:  dashed line
 	5.2:  ray (no arrow)
 	5.3:  line segment
 	5.4:  vector
@@ -98,7 +99,7 @@ var didMultiTouch = false;
 var clickmightbenewcurve = false;
 var hasTouchTimer = null;
 var tpModeN = {
-	"5": 2, "5.2": 2, "5.3": 2, "5.4": 2,
+	"5": 2, "5.1": 2, "5.2": 2, "5.3": 2, "5.4": 2,
 	"6": 2, "6.1": 2, "6.2": 2, "6.3": 2, "6.5": 2, "6.6": 2,
 	"7": 2, "7.2": 2, "7.4": 2, "7.5": 2,
 	"8": 2, "8.2": 2, "8.3": 2, "8.4": 2, "8.5": 3, "8.6": 3,
@@ -238,6 +239,7 @@ function addA11yTarget(canvdata, thisdrawla, imgpath) {
 		},
 		"twopoint": {
 			"line": [{"mode":5, "descr":_("Line"), inN: 2, "input":_("Enter two points on the line")}],
+			"dashline": [{"mode":5.1, "descr":_("Dashed Line"), inN: 2, "input":_("Enter two points on the dashed line")}],
 			"lineseg": [{"mode":5.3, "descr":_("Line segment"), inN: 2, "input":_("Enter the starting and ending point of the line segment")}],
 			"ray": [{"mode":5.2, "descr":_("Ray"), inN: 2, "input":_("Enter the starting point of the ray and another point on the ray")}],
 			"parab": [{"mode":6, "descr":_("Parabola"), inN: 2, "input":_("Enter the vertex, then another point on the parabola")}],
@@ -905,7 +907,9 @@ function drawTarget(x,y,skipencode) {
 					}
 					if (Math.abs(x2-tplines[curTarget][i][0][0])<1 || Math.abs(slope)>100) { //vert line
 						//document.getElementById("ans0-0").innerHTML = 'vert';
-						if (tptypes[curTarget][i]==5.2) {
+						if (tptypes[curTarget][i]==5.1) {
+							ctx.dashedLine(tplines[curTarget][i][0][0],0,tplines[curTarget][i][0][0],targets[curTarget].imgheight);
+						} else if (tptypes[curTarget][i]==5.2) {
 							ctx.moveTo(tplines[curTarget][i][0][0],tplines[curTarget][i][0][1]);
 							if (y2>tplines[curTarget][i][0][1]) {
 								ctx.lineTo(tplines[curTarget][i][0][0],targets[curTarget].imgheight);
@@ -923,7 +927,10 @@ function drawTarget(x,y,skipencode) {
 						//document.getElementById("ans0-0").innerHTML = slope;
 						var yleft = tplines[curTarget][i][0][1] - slope*tplines[curTarget][i][0][0];
 						var yright = tplines[curTarget][i][0][1] + slope*(targets[curTarget].imgwidth-tplines[curTarget][i][0][0]);
-						if (tptypes[curTarget][i]==5.2) {
+						if (tptypes[curTarget][i]==5.1) {
+							ctx.dashedLine(tplines[curTarget][i][0][0],tplines[curTarget][i][0][1],targets[curTarget].imgwidth,yright);
+							ctx.dashedLine(tplines[curTarget][i][0][0],tplines[curTarget][i][0][1],0,yleft);
+						} else if (tptypes[curTarget][i]==5.2) {
 							ctx.moveTo(tplines[curTarget][i][0][0],tplines[curTarget][i][0][1]);
 							if (x2>tplines[curTarget][i][0][0]) {
 								ctx.lineTo(targets[curTarget].imgwidth,yright);
@@ -1073,7 +1080,8 @@ function drawTarget(x,y,skipencode) {
 
 					do {
 						curx += flip*3;
-						ctx.lineTo(curx, stretch*Math.sqrt(flip*(curx - tplines[curTarget][i][0][0])) + tplines[curTarget][i][0][1]);
+                        cury = stretch*Math.sqrt(flip*(curx - tplines[curTarget][i][0][0])) + tplines[curTarget][i][0][1];
+						ctx.lineTo(curx, cury);
 					} while (curx > 0 && curx < targets[curTarget].imgwidth && cury > 0 && cury < targets[curTarget].imgheight);
 				}
 			}
@@ -1148,8 +1156,25 @@ function drawTarget(x,y,skipencode) {
 			}
 			if (x2 != null && (x2!=tplines[curTarget][i][0][0] || y2!=tplines[curTarget][i][0][1])) {
 				if (tptypes[curTarget][i]==7) { //is a tp circle
-					var rad = Math.sqrt((x2-tplines[curTarget][i][0][0])*(x2-tplines[curTarget][i][0][0]) + (y2-tplines[curTarget][i][0][1])*(y2-tplines[curTarget][i][0][1]));
-					ctx.arc(tplines[curTarget][i][0][0],tplines[curTarget][i][0][1],rad,0,2*Math.PI,true);
+                    // old code: required square grid
+					//var rad = Math.sqrt((x2-tplines[curTarget][i][0][0])*(x2-tplines[curTarget][i][0][0]) + (y2-tplines[curTarget][i][0][1])*(y2-tplines[curTarget][i][0][1]));
+					//ctx.arc(tplines[curTarget][i][0][0],tplines[curTarget][i][0][1],rad,0,2*Math.PI,true);
+                    // new code: draw as ellipse
+                    var dx = Math.abs(x2-tplines[curTarget][i][0][0]);
+					var dy = Math.abs(y2-tplines[curTarget][i][0][1]);
+                    // convert to coordinate values to find radius
+                    var dxv = dx / targets[curTarget].pixperx;
+                    var dyv = dy / targets[curTarget].pixpery;
+                    var rad = Math.sqrt(dxv*dxv+dyv*dyv);
+                    ctx.save(); // save state
+					ctx.beginPath();
+                    // scale to grid
+                    var rx = rad*targets[curTarget].pixperx;
+                    var ry = rad*targets[curTarget].pixpery;
+					ctx.translate(tplines[curTarget][i][0][0]-rx, tplines[curTarget][i][0][1]-ry);
+					ctx.scale(rx, ry);
+					ctx.arc(1, 1, 1, 0, 2 * Math.PI, false);
+					ctx.restore(); // restore to original state
 				} else if (tptypes[curTarget][i]==7.2) { //if a tp ellipse
 					var rx = Math.abs(x2-tplines[curTarget][i][0][0]);
 					var ry = Math.abs(y2-tplines[curTarget][i][0][1]);
@@ -1708,6 +1733,11 @@ function deleteCurve(curveType,num) {
 	}
 	drawTarget();
 }
+function roundToDec(val, dec) {
+    // no reason for any of the values to be anything but integers
+    return Math.round(val);
+    //return Math.round(val*Math.pow(10,dec))/Math.pow(10,dec);
+}
 function encodeDraw() {
 	var out = '';
 	var outline = [];
@@ -1725,7 +1755,7 @@ function encodeDraw() {
 			if (j!=0) {
 				out += ',';
 			}
-			out +=	'('+outline[j][0]+','+outline[j][1]+')';
+			out +=	'('+roundToDec(outline[j][0],4)+','+roundToDec(outline[j][1],4)+')';
 
 		}
 	}
@@ -1734,14 +1764,14 @@ function encodeDraw() {
 		if (i!=0) {
 			out += ',';
 		}
-		out += '('+dots[curTarget][i][0]+','+dots[curTarget][i][1]+')';
+		out += '('+roundToDec(dots[curTarget][i][0],4)+','+roundToDec(dots[curTarget][i][1],4)+')';
 	}
 	out += ';;';
 	for (var i=0; i<odots[curTarget].length; i++) {
 		if (i!=0) {
 			out += ',';
 		}
-		out += '('+odots[curTarget][i][0]+','+odots[curTarget][i][1]+')';
+		out += '('+roundToDec(odots[curTarget][i][0],4)+','+roundToDec(odots[curTarget][i][1],4)+')';
 	}
 	out += ';;';
 	var tplineout = [];
@@ -1750,7 +1780,7 @@ function encodeDraw() {
 		if (tplines[curTarget][i].length==tpModeN[tptypes[curTarget][i]]) {
 			tpoutstr = '('+tptypes[curTarget][i];
 			for (var j=0; j<tplines[curTarget][i].length; j++) {
-				tpoutstr += ','+tplines[curTarget][i][j][0]+','+tplines[curTarget][i][j][1];
+				tpoutstr += ','+roundToDec(tplines[curTarget][i][j][0],4)+','+roundToDec(tplines[curTarget][i][j][1],4);
 			}
 			tplineout.push(tpoutstr + ')');
 		}
@@ -1763,7 +1793,7 @@ function encodeDraw() {
 		//	out += ',';
 		//}
 		if (ineqlines[curTarget][i].length>2) {
-			tpineqout.push('('+ineqtypes[curTarget][i]+','+ineqlines[curTarget][i][0][0]+','+ineqlines[curTarget][i][0][1]+','+ineqlines[curTarget][i][1][0]+','+ineqlines[curTarget][i][1][1]+','+ineqlines[curTarget][i][2][0]+','+ineqlines[curTarget][i][2][1]+')');
+			tpineqout.push('('+ineqtypes[curTarget][i]+','+roundToDec(ineqlines[curTarget][i][0][0],4)+','+roundToDec(ineqlines[curTarget][i][0][1],4)+','+roundToDec(ineqlines[curTarget][i][1][0],4)+','+roundToDec(ineqlines[curTarget][i][1][1],4)+','+roundToDec(ineqlines[curTarget][i][2][0],4)+','+roundToDec(ineqlines[curTarget][i][2][1],4)+')');
 		}
 	}
 	out += tpineqout.join(",");
@@ -2236,6 +2266,7 @@ function drawMouseMove(ev) {
 	var tempTarget = null;
 	clickmightbenewcurve = false;
 	var mousePos = mouseCoords(ev);
+
 	//$(".tips").html("move"+didMultiTouch);
 	//document.getElementById("ans0-0").innerHTML = dragObj + ';' + curTPcurve;
 	//if (curTarget==null) {
@@ -2416,8 +2447,10 @@ function setCursor(cursor, target) {
 	if (targets[target].cursor != cursor) {
 		if (cursor=='move') {
 			targets[target].el.style.cursor = cursor;
-		} else {
-			targets[target].el.style.cursor = 'url('+staticroot+'/img/'+cursor+'.cur), auto';
+		} else if (cursor=='pen') {
+			targets[target].el.style.cursor = 'url('+staticroot+'/img/penup.svg) 0 0, auto';
+		} else if (cursor=='pendown') {
+			targets[target].el.style.cursor = 'url('+staticroot+'/img/pendown.svg) 0 20, auto';
 		}
 		targets[target].cursor = cursor;
 	}
@@ -2493,6 +2526,13 @@ function initCanvases(k) {
 		CanvasRenderingContext2D.prototype.dashedLine = function(x1, y1, x2, y2, dashLen) {
 		    if (dashLen == undefined) dashLen = 10;
 
+			if (y1 < 0 && y1 != y2) {
+				x1 = x1 - y1*(x2-x1)/(y2-y1);
+				y1 = 0;
+			} else if (y1 > targets[curTarget].imgheight && y1 != y2) {
+				x1 = x1 + (targets[curTarget].imgheight - y1)*(x2-x1)/(y2-y1);
+				y1 = targets[curTarget].imgheight;
+			}
 		    this.beginPath();
 		    this.moveTo(x1, y1);
 

@@ -2,13 +2,13 @@
 //IMathAS:  Manage LatePasses
 //(c) 2007 David Lippman
 
-	require("../init.php");
+	require_once "../init.php";
 
 
 	if (!(isset($teacherid))) {
-		require("../header.php");
+		require_once "../header.php";
 		echo "You need to log in as a teacher to access this page";
-		require("../footer.php");
+		require_once "../footer.php";
 		exit;
 	}
 	$cid = Sanitize::courseId($_GET['cid']);
@@ -21,12 +21,12 @@
 			}
 		}
 		$stm = $DBH->prepare("UPDATE imas_courses SET latepasshrs=:latepasshrs WHERE id=:id");
-		$stm->execute(array(':latepasshrs'=>$_POST['hours'], ':id'=>$cid));
+		$stm->execute(array(':latepasshrs'=>max(1,intval($_POST['hours'])), ':id'=>$cid));
 		header('Location: ' . $GLOBALS['basesiteurl'] . "/course/listusers.php?cid=$cid" . "&r=" . Sanitize::randomQueryStringParam());
 		exit;
 	}
 
-    require("../header.php");
+    require_once "../header.php";
     echo "<div class=breadcrumb>$breadcrumbbase ";
     if (empty($_COOKIE['fromltimenu'])) {
         echo " <a href=\"course.php?cid=$cid\">".Sanitize::encodeStringForDisplay($coursename)."</a> &gt; ";
@@ -181,5 +181,5 @@ function sendtoall(type) {
 </form>
 
 <?php
-	require("../footer.php");
+	require_once "../footer.php";
 ?>

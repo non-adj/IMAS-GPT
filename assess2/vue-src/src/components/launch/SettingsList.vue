@@ -103,7 +103,12 @@ export default {
           dateobj.sub += ' ' + this.$t('setlist.extension');
         }
         if (settings.exceptionpenalty > 0) {
-          dateobj.alert = this.$t('setlist.penalty', { p: settings.exceptionpenalty });
+          const now = new Date().getTime();
+          if (settings.original_enddate * 1000 > now) {
+            dateobj.alert = this.$t('setlist.penalty_after', { p: settings.exceptionpenalty, date: settings.original_enddate_disp });
+          } else {
+            dateobj.alert = this.$t('setlist.penalty', { p: settings.exceptionpenalty });
+          }
         }
       }
       if (settings.can_use_latepass > 0) {
@@ -181,11 +186,14 @@ export default {
       } else {
         var mytime = settings.timelimit * settings.timelimit_multiplier;
         if (settings.overtime_grace > 0) {
-          timeobj.str = this.$t('setlist.timelimit_wgrace', {
-            time: this.formatTimeLimit(mytime),
-            grace: this.formatTimeLimit(settings.overtime_grace * settings.timelimit_multiplier),
-            penalty: settings.overtime_penalty
-          });
+          timeobj.str = this.$t(
+            settings.overtime_penalty > 0 ? 'setlist.timelimit_wgrace_penalty' : 'setlist.timelimit_wgrace',
+            {
+              time: this.formatTimeLimit(mytime),
+              grace: this.formatTimeLimit(settings.overtime_grace * settings.timelimit_multiplier),
+              penalty: settings.overtime_penalty
+            }
+          );
         } else {
           timeobj.str = this.$t('setlist.timelimit', { time: this.formatTimeLimit(mytime) });
         }
@@ -194,11 +202,14 @@ export default {
             due: settings.enddate_disp
           });
         } else if (store.timelimit_restricted === 2) { // grace restricted
-          timeobj.altstr = this.$t('setlist.timelimit_wgrace_restricted', {
-            time: this.formatTimeLimit(mytime),
-            due: settings.enddate_disp,
-            penalty: settings.overtime_penalty
-          });
+          timeobj.altstr = this.$t(
+            settings.overtime_penalty > 0 ? 'setlist.timelimit_wgrace_restricted_penalty' : 'setlist.timelimit_wgrace_restricted',
+            {
+              time: this.formatTimeLimit(mytime),
+              due: settings.enddate_disp,
+              penalty: settings.overtime_penalty
+            }
+          );
         }
         if (settings.timelimit_multiplier > 1) {
           timeobj.sub = this.$t('setlist.timelimit_extend', {

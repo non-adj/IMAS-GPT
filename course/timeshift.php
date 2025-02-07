@@ -8,8 +8,8 @@
 ini_set("max_execution_time", "120");
 
 /*** master php includes *******/
-require("../init.php");
-include("../includes/htmlutil.php");
+require_once "../init.php";
+require_once "../includes/htmlutil.php";
 
 function shiftsub(&$itema) {
 	global $shiftstring;
@@ -131,6 +131,19 @@ if (!(isset($teacherid))) {
 			$upd->execute(array($row['startdate'], $row['enddate'], $row['postby'], $row['replyby'], $row['id']));
 		}
 
+		$upd = $DBH->prepare("UPDATE imas_forum_posts SET postdate=?,replyby=? WHERE id=?");
+		$stm = $DBH->prepare("SELECT ifp.id,ifp.postdate,ifp.replyby FROM imas_forum_posts AS ifp JOIN imas_forums AS ifs ON ifs.id=ifp.forumid WHERE ifp.posttype>0 AND ifs.courseid=?");
+		$stm->execute(array($cid));
+		while ($row=$stm->fetch(PDO::FETCH_ASSOC)) {
+			if ($row['postdate']>0) {
+				$row['postdate'] = strtotime($shiftstring, $row['postdate']);
+			}
+			if (is_numeric($row['replyby']) && $row['replyby']>0 && $row['replyby']<2000000000) {
+				$row['replyby'] = strtotime($shiftstring, $row['replyby']);
+			}
+			$upd->execute(array($row['postdate'], $row['replyby'], $row['id']));
+		}
+
 
 		//update Calendar items
 		$upd = $DBH->prepare("UPDATE imas_calitems SET date=? WHERE id=?");
@@ -176,7 +189,7 @@ if (!(isset($teacherid))) {
 /******* begin html output ********/
 $placeinhead = "<script type=\"text/javascript\" src=\"$staticroot/javascript/DatePicker.js\"></script>";
 
-require("../header.php");
+require_once "../header.php";
 
 if ($overwriteBody==1) {
 	echo $body;
@@ -211,7 +224,7 @@ if ($overwriteBody==1) {
 <?php
 }
 
-require("../footer.php");
+require_once "../footer.php";
 
 
 ?>

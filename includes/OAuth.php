@@ -24,7 +24,7 @@ class OAuthConsumer {
   function __construct($key, $secret, $callback_url=NULL, $rights=0,$groupid=0) {
     $this->key = $key;
     $this->secret = $secret;
-    $this->callback_url = $callback_url;
+    // $this->callback_url = $callback_url;
     $this->rights = $rights;
     $this->groupid = $groupid;
   }
@@ -612,7 +612,7 @@ class OAuthServer {
 
     $consumer = $this->data_store->lookup_consumer($consumer_key);
     if (!$consumer) {
-      throw new OAuthException("Invalid consumer - your LTI tool is not configured correctly. Check your LTI key and secret.");
+      throw new OAuthException("Invalid consumer - your LTI tool is not configured correctly. Check your LTI key and secret. Key sent: " . $consumer_key);
     }
 
     return $consumer;

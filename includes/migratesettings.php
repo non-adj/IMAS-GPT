@@ -2,7 +2,7 @@
 // IMathAS: Assessment settings migration
 // (c) 2019 David Lippman
 
-require(__DIR__ . '/convertintro.php');
+require_once __DIR__ . '/convertintro.php';
 
 function migrateAssessSettings($settings, $oldUIver, $newUIver) {
   if ($oldUIver == 1 && $newUIver == 2) {
@@ -139,7 +139,7 @@ function migrateAssessSettings1to2($settings) {
     $settings['ansingb'] = 'after_due';
   }
   // fix possible invalid settings
-  if ($settings['showscores'] == 'during') {
+  if ($settings['showscores'] == 'during' || $settings['showscores'] == 'at_end') {
     if ($settings['submitby'] == 'by_question') {
       $settings['scoresingb'] = 'immediately';
     } else {

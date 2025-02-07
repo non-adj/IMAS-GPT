@@ -3,11 +3,11 @@
 //(c) 2019 David Lippman
 
 /*** master php includes *******/
-require("../init.php");
-require("../includes/htmlutil.php");
-require("../includes/copyiteminc.php");
-require("../includes/loaditemshowdata.php");
-require_once("../includes/TeacherAuditLog.php");
+require_once "../init.php";
+require_once "../includes/htmlutil.php";
+require_once "../includes/copyiteminc.php";
+require_once "../includes/loaditemshowdata.php";
+require_once "../includes/TeacherAuditLog.php";
 
 /*** pre-html data manipulation, including function code *******/
 
@@ -106,7 +106,21 @@ if (!(isset($teacherid))) {
 
 			if ($_POST['showwork'] !== 'DNC') {
 				$sets[] = "showwork=:showwork";
-				$qarr[':showwork'] = Sanitize::onlyInt($_POST['showwork']) + Sanitize::onlyInt($_POST['showworktype']);
+				$qarr[':showwork'] = Sanitize::onlyInt($_POST['showwork']);
+                if (isset($_POST['showworktype'])) {
+                    $qarr[':showwork'] += Sanitize::onlyInt($_POST['showworktype']);
+                }
+                $sets[] = "workcutoff=:workcutoff";
+                if (!empty($_POST['doworkcutoff'])) {
+                    $qarr[':workcutoff'] = Sanitize::onlyInt($_POST['workcutoffval']);
+                    if ($_POST['workcutofftype'] == 'hr') {
+                        $qarr[':workcutoff'] *= 60;
+                    } else if ($_POST['workcutofftype'] == 'day') {
+                        $qarr[':workcutoff'] *= 60*24;
+                    } 
+                } else {
+                    $qarr[':workcutoff'] = 0;
+                }
 			}
 
 			if ($_POST['displaymethod'] !== 'DNC') {
@@ -241,8 +255,12 @@ if (!(isset($teacherid))) {
 			}
 
 			if ($_POST['noprint'] !== 'DNC') {
-				$sets[] = "noprint=:noprint";
-				$qarr[':noprint'] = Sanitize::onlyInt($_POST['noprint']);
+                if (!empty($_POST['noprint'])) {
+                    $sets[] = "noprint=(noprint | 1)";
+                } else {
+                    $sets[] = "noprint=(noprint & ~1)";
+                }
+                $metadata['noprint'] = $_POST['noprint'];
 			}
 
 			if ($_POST['istutorial'] !== 'DNC') {
@@ -449,6 +467,21 @@ if (!(isset($teacherid))) {
 				unset($metadata[':cid']);
 			}
 		}
+        if ($_POST['lockforassess'] !== 'DNC') {
+            // handle separately since must be limited to by_assess
+            if (intval($_POST['lockforassess']) == 2) {
+                $stm = $DBH->prepare("UPDATE imas_assessments SET noprint=(noprint | 2) WHERE id IN ($checkedlist) AND courseid=:cid AND submitby='by_assessment'");
+            } else {
+                $stm = $DBH->prepare("UPDATE imas_assessments SET noprint=(noprint & ~2) WHERE id IN ($checkedlist) AND courseid=:cid");
+            }
+            $stm->execute([':cid'=>$cid]);
+            $metadata['lockforassess'] = $_POST['lockforassess'];
+            if (intval($_POST['lockforassess']) == 0) {
+                // no lock: clear any existing locks
+                $stm = $DBH->prepare("UPDATE imas_students SET lockaid=0 WHERE courseid=? AND lockaid in ($checkedlist)");
+                $stm->execute([$cid]);
+            }
+        }
 		if ($_POST['intro'] !== 'DNC') {
 			$stm = $DBH->prepare("SELECT intro FROM imas_assessments WHERE id=:id");
 			$stm->execute(array(':id'=>Sanitize::onlyInt($_POST['intro'])));
@@ -492,8 +525,8 @@ if (!(isset($teacherid))) {
             isset($_POST['removeperq']) || $_POST['exceptionpenalty'] !== '' ||
             $_POST['subtype'] !== 'DNC'
         ) {
-            require_once("../includes/updateptsposs.php");
-            require_once("../assess2/AssessHelpers.php");
+            require_once "../includes/updateptsposs.php";
+            require_once "../assess2/AssessHelpers.php";
 			foreach ($checked as $aid) {
                 //update points possible
                 updatePointsPossible($aid);
@@ -507,7 +540,7 @@ if (!(isset($teacherid))) {
 			}
         }
         if ($_POST['showwork'] != 'DNC') {
-            require_once("../assess2/AssessHelpers.php");
+            require_once "../assess2/AssessHelpers.php";
             // update "show work after" status flags
             foreach ($checked as $aid) {
                 $thissubby = $coreOK ? $submitby : $cursubmitby[$aid];
@@ -515,7 +548,7 @@ if (!(isset($teacherid))) {
             }
         }
 		if (isset($_POST['chgendmsg'])) {
-			include("assessendmsg.php");
+			require_once "assessendmsg.php";
 		} else {
 			$btf = isset($_GET['btf']) ? '&folder=' . Sanitize::encodeUrlParam($_GET['btf']) : '';
 			header('Location: ' . $GLOBALS['basesiteurl'] . "/course/course.php?cid=" . Sanitize::courseId($_GET['cid']) .$btf. "&r=" . Sanitize::randomQueryStringParam());
@@ -641,9 +674,12 @@ if (!(isset($teacherid))) {
 }
 
 /******* begin html output ********/
-$placeinhead = '<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.10/vue.min.js"></script>';
-
- require("../header.php");
+if (!empty($CFG['GEN']['uselocaljs'])) {
+	$placeinhead = '<script type="text/javascript" src="'.$staticroot.'/javascript/vue3-4-31.min.js"></script>';
+} else {
+    $placeinhead = '<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.31/vue.global.prod.min.js" integrity="sha512-Dg9zup8nHc50WBBvFpkEyU0H8QRVZTkiJa/U1a5Pdwf9XdbJj+hZjshorMtLKIg642bh/kb0+EvznGUwq9lQqQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>';
+}
+ require_once "../header.php";
 
 if ($overwriteBody==1) {
 	echo $body;
@@ -666,8 +702,9 @@ div.highlight {
 	padding-top: 4px;
 	background-color: #e1f5ec;
 	border-left: 2px solid #19925b;
-	margin-left: -2px;
+	margin-left: -4px;
 	margin-bottom: 2px;
+	padding-left: 2px;
 }
 div.warn {
 	padding-top: 4px;
@@ -805,7 +842,7 @@ function tabToSettings() {
 	<h2>Change Settings</h2>
 
 <?php
-	require('chgassessments2form.php');
+	require_once 'chgassessments2form.php';
 ?>
 
 
@@ -814,5 +851,5 @@ function tabToSettings() {
 	</form>
 <?php
 }
-require("../footer.php");
+require_once "../footer.php";
 ?>

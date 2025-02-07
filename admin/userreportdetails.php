@@ -2,8 +2,8 @@
 //IMathAS - User Details page
 //(c) 2017 David Lippman
 
-require("../init.php");
-require("../includes/newusercommon.php");
+require_once "../init.php";
+require_once "../includes/newusercommon.php";
 
 function getRoleNameByRights($rights) {
   switch ($rights) {
@@ -60,7 +60,7 @@ if ($myrights < 100 && (($myspecialrights&32)!=32)) {
 		  $errors = checkNewUserValidation(array('pw1'));
 		  if ($errors == '') {
 			if (isset($CFG['GEN']['newpasswords'])) {
-				require_once("../includes/password.php");
+				require_once "../includes/password.php";
 				$newpw = password_hash($_POST['pw1'], PASSWORD_DEFAULT);
 			} else {
 				$newpw = md5($_POST['pw1']);
@@ -248,7 +248,7 @@ td.hocptd li.hide {
   display: none;
 }
 </style>';
-require("../header.php");
+require_once "../header.php";
 
 if ($overwriteBody==1) {
  echo $body;
@@ -284,6 +284,7 @@ if ($overwriteBody==1) {
   	  echo '<p class=noticetext>'.$errors.'</p>';
   }
   echo '<form method="post" id="pwform" class=limitaftervalidate>';
+  echo '<div id="errorlive" aria-live="polite" class="sr-only"></div>';
   echo '<p><a href="#" onclick="$(\'#pwreset\').show();return false;">';
   echo _('Reset Password').'</a>';
   echo ' <span style="display:none;" id="pwreset"><label>'._('Set temporary password to: ');
@@ -530,4 +531,4 @@ if ($overwriteBody==1) {
 }
 
 echo '<p>&nbsp;</p><p>&nbsp;</p>';
-require("../footer.php");
+require_once "../footer.php";

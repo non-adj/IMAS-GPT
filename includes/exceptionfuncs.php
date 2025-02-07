@@ -178,11 +178,7 @@ class ExceptionFuncs {
 				$adata['enddate'] = $exception[1];
 			} else {
 				//if not using exception, use latepasscnt as actual number of latepasses used, or 0
-				if ($exception!==null) {
-					$latepasscnt = 0;//max(0,$exception[2]);
-				} else {
-					$latepasscnt = 0;
-				}
+				$latepasscnt = 0;
             }
 			if ($getcanusereason) {
 				$canuselatepass = $this->getCanUseAssessLatePass($adata, $latepasscnt, true);
@@ -273,7 +269,7 @@ class ExceptionFuncs {
         // determine reason for blocking
         if ($adata['allowlate'] == 0) {
             $canuselatepass = 0; //not enabled
-        } else if ($adata['enddate'] > $this->courseenddate) {
+        } else if ($adata['enddate'] >= $this->courseenddate) {
             $canuselatepass = 3; // past course enddate
         } else if ($now>$adata['enddate'] && $adata['allowlate']<10) {
             $canuselatepass = 4; // past due date, and LP only allowed before

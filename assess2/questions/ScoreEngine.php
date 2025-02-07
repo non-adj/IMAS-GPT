@@ -2,10 +2,10 @@
 
 namespace IMathAS\assess2\questions;
 
-require_once(__DIR__ . '/ErrorHandler.php');
-require_once(__DIR__ . '/QuestionHtmlGenerator.php');
-require_once(__DIR__ . '/models/ScoreQuestionParams.php');
-require_once(__DIR__ . '/scorepart/ScorePartFactory.php');
+require_once __DIR__ . '/ErrorHandler.php';
+require_once __DIR__ . '/QuestionHtmlGenerator.php';
+require_once __DIR__ . '/models/ScoreQuestionParams.php';
+require_once __DIR__ . '/scorepart/ScorePartFactory.php';
 
 use PDO;
 use RuntimeException;
@@ -138,10 +138,13 @@ class ScoreEngine
         $attemptn = $scoreQuestionParams->getAttemptNumber();
         $thisq = $scoreQuestionParams->getQuestionNumber() + 1;
         $currentseed = $scoreQuestionParams->getQuestionSeed();
+        $graphdispmode = $_SESSION['userprefs']['graphdisp'];
+        $drawentrymode = $_SESSION['userprefs']['drawentry'];
         try {
-          eval(interpret('control', $quesData['qtype'], $quesData['control']));
+          $db_qsetid = $scoreQuestionParams->getDbQuestionSetId();
+          eval(interpret('control', $quesData['qtype'], $quesData['control'], 1, [$db_qsetid]));
           $this->randWrapper->srand($scoreQuestionParams->getQuestionSeed() + 1);
-          eval(interpret('answer', $quesData['qtype'], $quesData['answer']));
+          eval(interpret('answer', $quesData['qtype'], $quesData['answer'], 1, [$db_qsetid]));
         } catch (\Throwable $t) {
             $this->addError(
                 _('Caught error while evaluating the code in this question: ')
@@ -183,9 +186,6 @@ class ScoreEngine
             }
             if (is_array($reqdecimals)) {
                 foreach ($reqdecimals as $kidx => $vval) {
-                    if (substr((string)$vval, 0, 1) == '=') {
-                        continue;
-                    } //skip '=2' style $reqdecimals
                     list($vval, $exactreqdec, $reqdecoffset, $reqdecscoretype) = parsereqsigfigs($vval);
                     if (($hasGlobalAbstol || !isset($abstolerance[$kidx])) && (!isset($reltolerance) || !is_array($reltolerance) || !isset($reltolerance[$kidx]))) {
                         if (count($reqdecscoretype)==2) {
@@ -199,7 +199,7 @@ class ScoreEngine
                         }
                     }
                 }
-            } else if (substr((string)$reqdecimals, 0, 1) != '=') { //skip '=2' style $reqdecimals
+            } else { 
                 list($parsedreqdec, $exactreqdec, $reqdecoffset, $reqdecscoretype) = parsereqsigfigs((string)$reqdecimals);
                 if (!isset($abstolerance) && !isset($reltolerance)) { //set global abstol
                     if (count($reqdecscoretype)==2) {
@@ -246,7 +246,7 @@ class ScoreEngine
                 continue;
             }
 
-            if ('answerformat' == $optionKey && is_scalar($answerformat)) {
+            if ('answerformat' == $optionKey) {
                 $answerformat = str_replace(' ', '', $answerformat);
             }
 
@@ -267,7 +267,7 @@ class ScoreEngine
         }
 
         if (isset($GLOBALS['CFG']['hooks']['assess2/questions/score_engine'])) {
-            require_once($GLOBALS['CFG']['hooks']['assess2/questions/score_engine']);
+            require_once $GLOBALS['CFG']['hooks']['assess2/questions/score_engine'];
             if (function_exists('onBeforeScoreQuestion')) {
                 onBeforeScoreQuestion($scoreQuestionParams,
                     $varsForScorepart, $additionalVarsForScoring);
@@ -631,6 +631,7 @@ class ScoreEngine
                     return evalbasic($v);
                 }
             }, $answeights);
+            ksort($answeights);
             if (array_sum($answeights)==0) {
                 $answeights = array_fill_keys(array_keys($anstypes), 1); 
             }
@@ -729,7 +730,7 @@ class ScoreEngine
         ];
 
         if (isset($GLOBALS['CFG']['hooks']['assess2/questions/score_engine'])) {
-            require_once($GLOBALS['CFG']['hooks']['assess2/questions/score_engine']);
+            require_once $GLOBALS['CFG']['hooks']['assess2/questions/score_engine'];
             if (function_exists('onScorePartMultiPart')) {
                 $returnData = onScorePartMultiPart($returnData, $scorePartResult);
             }
@@ -802,7 +803,7 @@ class ScoreEngine
         );
 
         if (isset($GLOBALS['CFG']['hooks']['assess2/questions/score_engine'])) {
-            require_once($GLOBALS['CFG']['hooks']['assess2/questions/score_engine']);
+            require_once $GLOBALS['CFG']['hooks']['assess2/questions/score_engine'];
             if (function_exists('onScorePartNonMultiPart')) {
                 $returnData = onScorePartNonMultiPart($returnData, $scorePartResult);
             }

@@ -2,10 +2,10 @@
 //IMathAS:  Item Analysis addon - get student list for different features; assess2 ver
 //(c) 2019 David Lippman for Lumen Learning
 
-require("../init.php");
+require_once "../init.php";
 $flexwidth = true;
 $nologo = true;
-require("../header.php");
+require_once "../header.php";
 
 
 $isteacher = isset($teacherid);
@@ -118,7 +118,7 @@ if ($type=='notstart') {
 	$sturegens = array();
 	$stuatt = array();
 	while ($line=$stm->fetch(PDO::FETCH_ASSOC)) {
-		$scoredData = json_decode(gzdecode($line['scoreddata']), true);
+		$scoredData = json_decode(Sanitize::gzexpand($line['scoreddata']), true);
 		$scoredAssessmentIndex = $scoredData['scored_version'];
 		$scoredAssessment = $scoredData['assess_versions'][$scoredAssessmentIndex];
 
@@ -218,7 +218,7 @@ if ($type=='notstart') {
 		echo '</tbody></table>';
 	}
 }
-require("../footer.php");
+require_once "../footer.php";
 
 function getpts($sc) {
 	if (strpos($sc,'~')===false) {

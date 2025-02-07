@@ -2,11 +2,11 @@
 	//Listing of all forums for a course - not being used
 	//(c) 2006 David Lippman
 
-	require("../init.php");
+	require_once "../init.php";
 	if (!isset($teacherid) && !isset($tutorid) && !isset($studentid)) {
-	   require("../header.php");
+	   require_once "../header.php";
 	   echo "You are not enrolled in this course.  Please return to the <a href=\"../index.php\">Home Page</a> and enroll\n";
-	   require("../footer.php");
+	   require_once "../footer.php";
 	   exit;
     }
     $isteacher = isset($teacherid);
@@ -53,7 +53,7 @@
 	$placeinhead .= '<script type="text/javascript" src="'.$staticroot.'/javascript/thread.js"></script>';
 	$placeinhead .= "<script type=\"text/javascript\">var AHAHsaveurl = '" . $GLOBALS['basesiteurl'] . "/forums/savetagged.php?cid=$cid';</script>";
 
-	require("../header.php");
+	require_once "../header.php";
 	echo "<div class=breadcrumb>$breadcrumbbase <a href=\"../course/course.php?cid=$cid\">".Sanitize::encodeStringForDisplay($coursename)."</a> &gt; ";
 	if ($searchtype != 'none') {
 		echo "<a href=\"forums.php?cid=$cid&amp;clearsearch=true\">Forum List</a> &gt; ";
@@ -83,7 +83,7 @@
 	//pull exceptions, as they may extend the enddate
 	$exceptions = array();
 	if (isset($studentid) && !$inInstrStuView && count($forumdata)>0) {
-		require_once("../includes/exceptionfuncs.php");
+		require_once "../includes/exceptionfuncs.php";
 		$exceptionfuncs = new ExceptionFuncs($userid, $cid, true, $studentinfo['latepasses'], $latepasshrs);
 		$ph = Sanitize::generateQueryPlaceholders($forumdata);
 		$stm = $DBH->prepare("SELECT startdate,enddate,islatepass,waivereqscore,itemtype,assessmentid FROM imas_exceptions WHERE assessmentid in ($ph) AND userid=? AND (itemtype='F' OR itemtype='P' OR itemtype='R')");
@@ -94,53 +94,40 @@
 			$forumdata[$row[5]]['enddate'] = $exceptionresult[7];
 		}
 	}
-	$stm = $DBH->prepare("SELECT itemorder FROM imas_courses WHERE id=:id");
-	$result = $stm->execute(array(':id'=>$cid));
-	$itemorder =  unserialize($stm->fetchColumn(0));
-	$itemsimporder = array();
-	function flattenitems($items,&$addto) {
-		global $itemsimporder;
-		foreach ($items as $item) {
-			if (is_array($item)) {
-                if (!empty($item['items'])) {
-				    flattenitems($item['items'],$addto);
-                }
-			} else {
-				$addto[] = $item;
-			}
-		}
-	}
-	flattenitems($itemorder,$itemsimporder);
-
 	$itemsassoc = array();
 	$stm = $DBH->prepare("SELECT id,typeid FROM imas_items WHERE courseid=:courseid AND itemtype='Forum'");
 	$stm->execute(array(':courseid'=>$cid));
 	while ($row = $stm->fetch(PDO::FETCH_NUM)) {
 		$itemsassoc[$row[0]] = $row[1];
-		if (!in_array($row[0],$itemsimporder)) {
-			//capture any forums that are in imas_items but not imas_courses.itemorder
-			$itemsimporder[] = $row[0];
-		}
-	}
-	if (count($itemsimporder)==0) {
-		$maxitemnum = 1;
-	} else {
-		$maxitemnum = max($itemsimporder) + 1;
-	}
-	//capture any forums that are not in imas_items
-	foreach ($forumdata as $fid=>$line) {
-		if (in_array($fid,$itemsassoc)) { continue; }
-		$itemsassoc[$maxitemnum] = $fid;
-		$itemsimporder[] = $maxitemnum;
-		$maxitemnum++;
 	}
 
+	$stm = $DBH->prepare("SELECT itemorder FROM imas_courses WHERE id=:id");
+	$result = $stm->execute(array(':id'=>$cid));
+	$itemorder =  unserialize($stm->fetchColumn(0));
+	$forumcourseorder = array();
+	$forumhidden = array();
+	function flattenitems($items,&$addto,&$hiddenarr,$ishidden) {
+		global $itemsassoc, $isteacher;
+		foreach ($items as $item) {
+			if (is_array($item)) {
+                if (!empty($item['items'])) {
+				    flattenitems($item['items'],$addto,$hiddenarr,$ishidden||($item['avail']==0));
+                }
+			} else if (isset($itemsassoc[$item])) { // is a forum 
+				$addto[] = $itemsassoc[$item];
+				if ($ishidden) {
+					$hiddenarr[] = $itemsassoc[$item];
+				}
+			} 
+		}
+	}
+	flattenitems($itemorder,$forumcourseorder,$forumhidden,false);
 
 	//construct tag list selector
 	$taginfo = array();
-	foreach ($itemsimporder as $item) {
-		if (!isset($itemsassoc[$item]) || !isset($forumdata[$itemsassoc[$item]])) { continue; }
-		$taglist = $forumdata[$itemsassoc[$item]]['taglist'];
+	foreach ($forumcourseorder as $forumid) {
+		if (!isset($forumdata[$forumid])) { continue; }
+		$taglist = $forumdata[$forumid]['taglist'];
 		if ($taglist=='') { continue;}
 		$p = strpos($taglist,':');
 		$catname = substr($taglist,0,$p);
@@ -241,13 +228,14 @@ if ($searchtype == 'thread') {
 		$arr[] = $userid;
 	}
 
-	$query .= " ORDER BY imas_forum_threads.lastposttime DESC";
 	$stm = $DBH->prepare($query);
 	$stm->execute($arr);
 	$result=$stm->fetchALL(PDO::FETCH_ASSOC);
 	$threaddata = array();
 	$threadids = array();
+
 	foreach($result as $line) {
+		if (!$isteacher && in_array($line['forumid'], $forumhidden)) { continue; }
 		$threaddata[$line['id']] = $line;
 		$threadids[] = $line['id'];
 	}
@@ -290,13 +278,13 @@ if ($searchtype == 'thread') {
 			}
 
 			if ($isteacher) {
-				echo "<a href=\"thread.php?page=" . Sanitize::encodeUrlParam($page) . "&cid=" . Sanitize::courseId($cid) . "&forum=" . Sanitize::onlyInt($line['forumid']) . "&move=" . Sanitize::onlyInt($line['id']) . "\">Move</a> ";
+				echo "<a href=\"thread.php?cid=" . Sanitize::courseId($cid) . "&forum=" . Sanitize::onlyInt($line['forumid']) . "&move=" . Sanitize::onlyInt($line['id']) . "\">Move</a> ";
 			}
 			if ($isteacher) {
-				echo "<a href=\"thread.php?page=" . Sanitize::encodeUrlParam($page) . "&cid=" . Sanitize::courseId($cid) . "&forum=" . Sanitize::onlyInt($line['forumid']) . "&modify=" . Sanitize::onlyInt($line['id']) . "\">Modify</a> ";
+				echo "<a href=\"thread.php?cid=" . Sanitize::courseId($cid) . "&forum=" . Sanitize::onlyInt($line['forumid']) . "&modify=" . Sanitize::onlyInt($line['id']) . "\">Modify</a> ";
 			}
 			if ($isteacher) {
-				echo "<a href=\"thread.php?page=" . Sanitize::encodeUrlParam($page) . "&cid=" . Sanitize::courseId($cid) . "&forum=" . Sanitize::onlyInt($line['forumid']) . "&remove=" . Sanitize::onlyInt($line['id']) . "\">Remove</a>";
+				echo "<a href=\"thread.php?cid=" . Sanitize::courseId($cid) . "&forum=" . Sanitize::onlyInt($line['forumid']) . "&remove=" . Sanitize::onlyInt($line['id']) . "\">Remove</a>";
 			}
 			echo "</span>\n";
 			if ($line['isanon']==1) {
@@ -328,7 +316,7 @@ if ($searchtype == 'thread') {
 	 } else {
 	   $itemicons = $CFG['CPS']['itemicons'];
 	 }
-	require_once("../includes/filehandler.php");
+	require_once "../includes/filehandler.php";
 	$now = time();
 	if ($searchstr != '') {
 		$searchstr = trim(str_replace(' and ', ' ',$searchstr));
@@ -365,7 +353,7 @@ if ($searchtype == 'thread') {
 		$query .= "AND (imas_forums.avail=2 OR (imas_forums.avail=1 AND imas_forums.startdate<$now AND imas_forums.enddate>$now)) AND (imas_forums.settings&16)=0 ";
 	}
 	if ($anyforumsgroup && !$isteacher) {
-		$query .= "AND (imas_forum_threads.stugroupid=0 OR imas_forum_threads.stugroupid IN (SELECT stugroupid FROM imas_stugroupmembers WHERE userid=?')) ";
+		$query .= "AND (imas_forum_threads.stugroupid=0 OR imas_forum_threads.stugroupid IN (SELECT stugroupid FROM imas_stugroupmembers WHERE userid=?)) ";
 		$array[]= $userid;
 	}
 	$query .= " ORDER BY imas_forum_posts.postdate DESC";
@@ -378,6 +366,7 @@ if ($searchtype == 'thread') {
 		echo '<p>No results</p>';
 	}
 	foreach ($result as $line) {
+		if (!$isteacher && in_array($line['forumid'], $forumhidden)) { continue; }
 		echo "<div class=block>";
 		echo "<b>" . Sanitize::encodeStringForDisplay($line['subject']) ."</b>";
 		echo ' (in ' . Sanitize::encodeStringForDisplay($line['name']).')';
@@ -442,7 +431,7 @@ if ($searchtype == 'thread') {
 		$query .= "AND (imas_forum_threads.stugroupid=0 OR imas_forum_threads.stugroupid IN (SELECT stugroupid FROM imas_stugroupmembers WHERE userid=:userid )) ";
 		$qarr[':userid']=$userid;
 	}
-	$query .= "GROUP BY imas_forum_threads.forumid ORDER BY imas_forums.id";
+	$query .= "GROUP BY imas_forum_threads.forumid";
 	$stm = $DBH->prepare($query);
 	$stm->execute($qarr);
 	$result=$stm->fetchALL(PDO::FETCH_NUM);
@@ -470,7 +459,7 @@ if ($searchtype == 'thread') {
 		$query .= "AND (imas_forum_threads.stugroupid=0 OR imas_forum_threads.stugroupid IN (SELECT stugroupid FROM imas_stugroupmembers WHERE userid=:userid )) ";
 		$qarr[':userid']=$userid;
 	}
-	$query .= "GROUP BY imas_forum_posts.forumid ORDER BY imas_forums.id";
+	$query .= "GROUP BY imas_forum_posts.forumid";
 	$stm = $DBH->prepare($query);
 	$stm->execute($qarr);
 
@@ -509,42 +498,12 @@ if ($searchtype == 'thread') {
 		$newcnt[$row[0]] = $row[1];
 	}
 
-	/*$now = time();
-	$query = "SELECT * FROM imas_forums WHERE imas_forums.courseid='$cid'";
-	$result = mysql_query($query) or die("Query failed : $query " . mysql_error());
-	$forumdata = array();
-	while ($line = mysql_fetch_array($result, MYSQL_ASSOC)) {
-		$forumdata[$line['id']] = $line;
-	}
+	foreach ($forumcourseorder as $forumid) {
+		if (!isset($forumdata[$forumid])) { continue; }
+		$forumblockhidden = in_array($forumid, $forumhidden);
+		$line = $forumdata[$forumid];
 
-	$query = "SELECT itemorder FROM imas_courses WHERE id='$cid'";
-	$result = mysql_query($query) or die("Query failed : $query" . mysql_error());
-	$itemorder = unserialize(mysql_result($result,0,0));
-	$itemsimporder = array();
-	function flattenitems($items,&$addto) {
-		global $itemsimporder;
-		foreach ($items as $item) {
-			if (is_array($item)) {
-				flattenitems($item['items'],$addto);
-			} else {
-				$addto[] = $item;
-			}
-		}
-	}
-	flattenitems($itemorder,$itemsimporder);
-
-	$itemsassoc = array();
-	$query = "SELECT id,typeid FROM imas_items WHERE courseid='$cid' AND itemtype='Forum'";
-	$result = mysql_query($query) or die("Query failed : $query" . mysql_error());
-	while ($row = mysql_fetch_row($result)) {
-		$itemsassoc[$row[0]] = $row[1];
-	}
-	*/
-	foreach ($itemsimporder as $item) {
-		if (!isset($itemsassoc[$item]) || !isset($forumdata[$itemsassoc[$item]])) { continue; }
-		$line = $forumdata[$itemsassoc[$item]];
-
-		if (!$isteacher && !($line['avail']==2 || ($line['avail']==1 && $line['startdate']<$now && $line['enddate']>$now))) {
+		if (!$isteacher && (!($line['avail']==2 || ($line['avail']==1 && $line['startdate']<$now && $line['enddate']>$now)) || $forumblockhidden)) {
 				continue;
 		}
 		echo "<tr><td>";
@@ -553,13 +512,13 @@ if ($searchtype == 'thread') {
 			echo "<a href=\"../course/addforum.php?cid=$cid&id={$line['id']}\">Modify</a> ";
 			echo '</span>';
         }
-        if ($line['avail']==2 || ($line['avail']==1 && $line['startdate']<$now && $line['enddate']>$now)) {
+        if (($line['avail']==2 || ($line['avail']==1 && $line['startdate']<$now && $line['enddate']>$now)) && !$forumblockhidden) {
             echo '<b>';
         } else {
             echo '<i>';
         }
         echo "<a href=\"thread.php?cid=$cid&forum={$line['id']}\">".Sanitize::encodeStringForDisplay($line['name'])."</a></b> ";
-        if ($line['avail']==2 || ($line['avail']==1 && $line['startdate']<$now && $line['enddate']>$now)) {
+        if (($line['avail']==2 || ($line['avail']==1 && $line['startdate']<$now && $line['enddate']>$now)) && !$forumblockhidden) {
             echo '</b>';
         } else {
             echo '</i> <i class="small info">'._('Hidden').'</i> ';
@@ -585,5 +544,5 @@ if ($searchtype == 'thread') {
 <?php
 	}
 }
-	require("../footer.php");
+	require_once "../footer.php";
 ?>

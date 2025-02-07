@@ -5,18 +5,18 @@
 
 	//load in filters as needed
 	$filterdir = rtrim(dirname(__FILE__), '/\\');
-	//include("$filterdir/simplelti/simplelti.php");
+	//require_once "$filterdir/simplelti/simplelti.php";
 	if ((isset($_SESSION['mathdisp']) && $_SESSION['mathdisp']==2 ) || isset($loadmathfilter)) { //use image fallback for math
-		include("$filterdir/math/ASCIIMath2TeX.php");
+		require_once "$filterdir/math/ASCIIMath2TeX.php";
 		$AMT = new AMtoTeX;
 	}
 	if ((isset($_SESSION['graphdisp']) && $_SESSION['graphdisp']==2) || isset($loadgraphfilter)) { //use image fallback for graphs
-		include("$filterdir/graph/asciisvgimg.php");
+		require_once "$filterdir/graph/asciisvgimg.php";
 		$AS = new AStoIMG;
-		require_once("$filterdir/../includes/filehandler.php");
+		require_once "$filterdir/../includes/filehandler.php";
 	}
 	if ((!isset($_SESSION['graphdisp']) || $_SESSION['graphdisp']==0)) {
-		include_once("$filterdir/graph/sscrtotext.php");
+		require_once "$filterdir/graph/sscrtotext.php";
 	}
 	function mathfiltercallback($arr) {
 		global $AMT,$mathimgurl,$coursetheme;
@@ -49,7 +49,7 @@
 		if (trim($arr[2])=='') {return $arr[0];}
 
 		if (!isset($AS) || $AS===null) {
-			include("$filterdir/graph/asciisvgimg.php");
+			require_once "$filterdir/graph/asciisvgimg.php";
 			$AS = new AStoIMG;
 		}
 
@@ -74,7 +74,7 @@
 		if (trim($arr[2])=='') {return $arr[0];}
 
 		if (!isset($AS) || $AS===null) {
-			include("$filterdir/graph/asciisvgimg.php");
+			require_once "$filterdir/graph/asciisvgimg.php";
 			$AS = new AStoIMG;
 		}
 
@@ -161,7 +161,8 @@
                         $tag = '<div id="'.$uniqid.'wrap" class="embedwrap">';
                         $tag .= "<iframe id=\"$uniqid\" width=\"$w\" height=\"$h\" src=\"$url\" style=\"z-index:$zindex\" frameborder=\"0\">";
                         $tag .= '</iframe></div>';
-                        $str = str_replace($resval[0], $tag, $str);
+                        //$str = str_replace($resval[0], $tag, $str);
+                        $str = substr_replace($str, $tag, strpos($str, $resval[0]), strlen($resval[0]));
                         $zindex--;
                         continue;
                     }
@@ -273,13 +274,16 @@
 		$arr[1] = str_replace(array('<','>'),array('&lt;','&gt;'),$arr[1]);
 		return '`'.$arr[1].'`';
 	}
-	function printfilter($str) {
+	function printfilter($str, $stripbuttons = true) {
 		global $imasroot;
 		$str = preg_replace('/<canvas.*?\'(\w+\.png)\'.*?\/script>/','<div><img src="'.$imasroot.'/filter/graph/imgs/$1" alt="Graph"/></div>',$str);
 		$str = preg_replace('/<script.*?\/script>/','',$str);  //strip scripts
         $str = preg_replace('/<input[^>]*Preview[^>]*>/','',$str); //strip preview buttons
-        $str = preg_replace('/<input[^>]*button[^>]*>/','',$str); //strip buttons
-        $str = preg_replace('/<button[^>]*>.*?<\/button>/','',$str); //strip buttons
+        $str = preg_replace('/<button[^>]*>Preview.*?<\/button>/','',$str); //strip preview buttons
+		if ($stripbuttons) {
+			$str = preg_replace('/<input[^>]*button[^>]*>/','',$str); //strip buttons
+			$str = preg_replace('/<button[^>]*>.*?<\/button>/','',$str); //strip buttons
+		}
 
 		if (isset($_POST['hidetxtboxes'])) {
 			$str = preg_replace('/<input[^>]*text[^>]*>/','',$str);

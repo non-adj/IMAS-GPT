@@ -66,11 +66,14 @@ to question output or something.
  */
 var initstack = [];
 var loadedscripts = [];
+var scriptqueue = [];
+var processingscriptsqueue = false;
 var callbackstack = {};
 
 var imathasAssess = (function($) {
 
 var allParams = {};
+var allKekule = {};
 
 function clearparams(paramarr) {
   var qn;
@@ -85,7 +88,7 @@ function toMQwVars(str, elid) {
     if (qtype === 'numfunc' || (qtype === 'calcinterval' && allParams[qn].calcformat.indexOf('inequality')!=-1)) {
         str = AMnumfuncPrepVar(qn, str)[1];
     }
-    var nomatrices = !(qtype === 'matrix' || qtype === 'calcmatrix' || qtype === 'string');
+    var nomatrices = !(qtype.match(/matrix/) || qtype === 'string');
     return AMtoMQ(str, elid, nomatrices);
 }
 function fromMQwText(str, elid) {
@@ -112,8 +115,10 @@ function init(paramarr, enableMQ, baseel) {
     //save the params to the master record
     allParams[qn] = paramarr[qn];
     params = paramarr[qn];
-    if (params.helper && params.qtype.match(/^(calc|numfunc|string|interval|matrix|chemeqn)/)) { //want mathquill
+
+    if (params.helper && params.qtype.match(/^(calc|numfunc|string|interval|matrix|chemeqn|complexmatrix|alg)/)) { //want mathquill
       el = document.getElementById("qn"+qn);
+      if (!el && !params.matrixsize) { continue; }
       str = params.qtype;
       if (params.calcformat) {
         str += ','+params.calcformat;
@@ -124,13 +129,16 @@ function init(paramarr, enableMQ, baseel) {
       if (params.matrixsize) {
         str += ',matrixsized';
         $("input[id^=qn"+qn+"-]").attr("data-mq", str);
+        if (params.vars) {
+            $("input[id^=qn"+qn+"-]").attr("data-mq-vars", params.vars);
+        }
       } else {
         el.setAttribute("data-mq", str);
+        if (params.vars) {
+          el.setAttribute("data-mq-vars", params.vars);
+        }
       }
-      if (params.vars) {
-        el.setAttribute("data-mq-vars", params.vars);
-      }
-      //TODO: Need to adjust behavior for calcmatrix with answersize
+
       if (enableMQ) {
         if (params.matrixsize) {
           MQeditor.toggleMQAll("input[id^=qn"+qn+"-]", true, true);
@@ -201,6 +209,9 @@ function init(paramarr, enableMQ, baseel) {
     if (params.qtype === 'multans') {
       initMultAns(qn);
     }
+    if (params.qtype === 'molecule') { // do after scripts are loaded
+      initMolecule(qn);
+    }
     if (params.usetinymce) {
       if (document.getElementById("qn"+qn).disabled &&
         !document.getElementById("tinyprev"+qn)
@@ -210,6 +221,11 @@ function init(paramarr, enableMQ, baseel) {
         div.html(html);
         $("#qn"+qn).hide().after(div);
       } else {
+        var extendsetup = {};
+        if (params.nopaste) {
+            extendsetup['paste_preprocess'] = function(plugin, args) { args.content = '';}
+        }
+        extendsetup['valid_classes'] = 'gridded,centered,attach';
         initeditor("selector","#qn" + qn + ".mceEditor",null,false,function(ed) {
           ed.on('blur', function (e) {
             tinymce.triggerSave();
@@ -217,13 +233,14 @@ function init(paramarr, enableMQ, baseel) {
           }).on('focus', function (e) {
             jQuery(e.target.targetElm).triggerHandler('focus');
           })
-        });
+        }, extendsetup);
       }
     }
     if (params.qtype == 'essay') {
       $("#qnwrap"+qn+".introtext img").on('click', rotateimg);
     }
     initEnterHandler(qn);
+    $("input[id^=qn"+qn+"]:not([type=file])").attr("maxlength",8000);
   }
   initDupRubrics();
   initShowAnswer2();
@@ -232,36 +249,48 @@ function init(paramarr, enableMQ, baseel) {
   }
   initqsclickchange();
   initClearScoreMarkers();
+  
   if (paramarr.scripts) {
-    function handleScript(arr, cnt) {
-      if (arr[cnt][0] == 'code') {
-        try {
-          window.eval(arr[cnt][1]);
-        } catch (e) { console.log("Error executing question script:" + arr[cnt][1]);}
-        if (arr.length > cnt+1) {
-          handleScript(arr, cnt+1);
+    for (var i in paramarr.scripts) {
+        if (paramarr.scripts[i][0] == 'code') {
+            scriptqueue.push(paramarr.scripts[i]);
+        } else if (loadedscripts.indexOf(paramarr.scripts[i][1]) == -1) {
+            scriptqueue.push(paramarr.scripts[i]);
+            loadedscripts.push(paramarr.scripts[i][1]);
         }
-      } else if (loadedscripts.indexOf(arr[cnt][1]) == -1) {
-        jQuery.getScript(arr[cnt][1]).always(function() {
-          loadedscripts.push(arr[cnt][1]);
-          if (arr.length > cnt+1) {
-            handleScript(arr, cnt+1);
-          }
-        });
-      } else {
-        if (arr.length > cnt+1) {
-          handleScript(arr, cnt+1);
-        }
-      }
-      if (arr.length <= cnt+1) {
-        for (var i=0; i<initstack.length; i++) {
-              var foo = initstack[i]();
-        }
-        initstack.length = 0;
-      }
     }
-    handleScript(paramarr.scripts, 0);
+    if (scriptqueue.length > 0 && processingscriptsqueue === false) {
+        processScriptQueue();
+    }
   }
+}
+
+function processScriptQueue() {
+    processingscriptsqueue = true;
+    if (scriptqueue.length == 0) { return; }
+    var nextscript = scriptqueue.shift();
+
+    if (nextscript[0] == 'code') {
+      try {
+        window.eval(nextscript[1]);
+      } catch (e) { console.log("Error executing question script:" + nextscript[1]);}
+      processScriptQueueNext()
+    } else {
+      jQuery.getScript(nextscript[1]).always(function() { // force sync
+        processScriptQueueNext()
+      });
+    }
+}
+function processScriptQueueNext() {
+    for (var i=0; i<initstack.length; i++) {
+        var foo = initstack[i]();
+    }
+    initstack.length = 0;
+    if (scriptqueue.length == 0) {
+        processingscriptsqueue = false;
+    } else {
+        processScriptQueue();
+    }
 }
 
 // setup tip focus/blur handlers
@@ -438,6 +467,10 @@ function initShowAnswer2() {
           var curstate = (e.currentTarget.getAttribute('aria-expanded') == 'true');
           e.currentTarget.setAttribute('aria-expanded', curstate ? 'false' : 'true');
           $("#ans"+qref).toggleClass("hidden", curstate);
+          if (!curstate) {
+            $("#ans"+qref).attr("tabindex","-1").focus();
+          }
+          sendLTIresizemsg();
         })
         .html(icon)
     );
@@ -475,6 +508,7 @@ function initShowAnswer2() {
 		  	  .siblings("div:first-of-type")
 				.attr("aria-expanded",!curstate).attr("aria-hidden",curstate)
 				.toggleClass("hidden",curstate);
+            sendLTIresizemsg();
 		});
 	});
 }
@@ -565,6 +599,84 @@ function initMultAns(qn) {
         boxes.last().prop('checked', false);
       }
     });
+  }
+}
+
+function initMolecule(qn) {
+  if (typeof Kekule === 'undefined') {
+    var curqn = qn;
+    setTimeout( function(){ initMolecule(curqn);}.bind(this), 100);
+    return;
+  }
+  // ref: https://partridgejiang.github.io/Kekule.js/documents/tutorial/examples/composer.html
+  allKekule[qn] = new Kekule.Editor.Composer(document.getElementById("chemdraw" + qn));
+  allKekule[qn]
+    .setEnableOperHistory(true)
+    .setEnableLoadNewFile(false)
+    .setEnableCreateNewDoc(false)
+    .setAllowCreateNewChild(false)
+    .setCommonToolButtons(["undo", "redo", "copy", "cut", "paste", "zoomIn", "reset", "zoomOut", ]) 
+    .setChemToolButtons(["manipulate", "erase", "bond", "atomAndFormula", "ring", "charge"])
+    .setStyleToolComponentNames([]);
+  if (allParams[qn].displayformat === 'condensed') {
+    var renderconfig = new Kekule.Render.Render2DConfigs();
+    renderconfig.getMoleculeDisplayConfigs().setDefMoleculeDisplayType(Kekule.Render.MoleculeDisplayType.CONDENSED);
+    allKekule[qn].setRenderConfigs(renderconfig);
+  }
+  allKekule[qn].getEditor().on('editObjsUpdated', function(e) {
+    processMolecule(qn);
+  });
+  if (allParams[qn].chemla) {
+    allKekule[qn].setChemObj(Kekule.IO.loadFormatData(allParams[qn].chemla, "cml"));
+    window.setTimeout(function () {
+      let editor = allKekule[qn].getEditor();  // suppose this.widget is a composer
+      editor.scrollClientToObject(editor.getChemObj().getChildren());  // centers the current loaded molecules (childen of chemDocument)
+    }, 100);
+
+
+    /*  
+    Notes:
+    
+Hi @sowiso, you can change the default size of chem document by the config object of editor:
+
+composer.getEditorConfigs().getChemSpaceConfigs().setDefScreenSize2D({x: 600, y: 400});
+composer.newDoc();
+Or using the changeChemSpaceScreenSize method to modify the screen size of an opened document:
+
+composer.getEditor().changeChemSpaceScreenSize({x: 600, y: 400});
+
+
+The following code may help to shrink the large structures to fit the client of composer:
+
+var editor = composer.getEditor();
+var objBox = editor.getObjectsContainerBox(editor.getChemSpace().getChildren());
+var visualBox = chemEditor.getVisibleClientScreenBox();
+if (objBox && visualBox)
+{
+  var sx = (visualBox.x2 - visualBox.x1) / (objBox.x2 - objBox.x1);
+  var sy = (visualBox.y2 - visualBox.y1) / (objBox.y2 - objBox.y1);
+  var ratio = Math.min(sx, sy);
+  if (ratio < 1)
+  {
+    chemEditor.setZoom(chemEditor.getCurrZoom() * ratio);
+    chemEditor.scrollClientToObject(chemEditor.getChemSpace().getChildren());
+  }
+}
+
+
+
+    */
+    
+  }
+  var SAel = document.getElementById('chemsa' + qn);
+  if (SAel) { // has show answer el
+    var chemSAViewer = new Kekule.ChemWidget.Viewer(SAel, null, Kekule.Render.RendererType.R2D);
+    chemSAViewer.setEnableToolbar(false)
+      .setPadding(20)
+      .setChemObj(Kekule.IO.loadFormatData(SAel.getAttribute('data-cmldata'), "cml"));
+    if (allParams[qn].displayformat === 'condensed') {
+      chemSAViewer.setMoleculeDisplayType(Kekule.Render.Molecule2DDisplayType.CONDENSED);
+    }
   }
 }
 
@@ -660,24 +772,27 @@ function setupLivePreview(qn, skipinitial) {
 			    this.finaltimeout = setTimeout(this.DoFinalPreview,this.finaldelay);
 			  },
 
-			  RenderNow: function(text) {
+			  RenderNow: function(text, formatted) {
 				  //called by preview button
-			      this.buffer.innerHTML = this.oldtext = text;
+            this.oldtext = text;
+			      this.buffer.innerHTML = formatted ? text : this.preformat(text);
 			      this.mjRunning = true;
 			      this.RenderBuffer();
 			  },
 			  RenderBuffer: function() {
 			      if (mathRenderer=="MathJax") {
-                      if (MathJax.typesetPromise) {
+                      if (MathJax.typesetPromise && this.mjPromise) {
                         this.mjPromise = this.mjPromise.then(function () {
                             //MathJax.typesetClear([this.buffer]);
                             MathJax.typesetPromise([this.buffer]).then(this.PreviewDone.bind(this));
                         }.bind(this));
-                      } else {
+                      } else if (parseInt(MathJax.version)===2) {
                         MathJax.Hub.Queue(
                             ["Typeset",MathJax.Hub,this.buffer],
                             ["PreviewDone",this]
                         );
+                      } else {
+                        console.log('case 3');
                       }
 			      } else if (mathRenderer=="Katex") {
 			      	  renderMathInElement(this.buffer);
@@ -708,12 +823,12 @@ function setupLivePreview(qn, skipinitial) {
                   this.mjPending = true;
                   if (this.mjPromise) {
                     this.mjPromise = this.mjPromise.then(this.CreatePreview().bind(this));
-                  } else if (MathJax.Hub) {
+                  } else if (MathJax.Hub && parseInt(MathJax.version)===2) {
                     MathJax.Hub.Queue(["CreatePreview",this]);
                   }
 			    } else {
 			      this.oldtext = text;
-			      this.buffer.innerHTML = "`"+this.preformat(text)+"`";
+			      this.buffer.innerHTML = "`"+htmlEntities(this.preformat(text))+"`";
 			      this.mjRunning = true;
 			      this.RenderBuffer();
 			    }
@@ -746,7 +861,7 @@ function setupLivePreview(qn, skipinitial) {
 
 				  RenderNow: function(text) {
 				      var outnode = document.getElementById("p"+qn);
-				      outnode.innerHTML = text;
+				      outnode.innerHTML = htmlEntities(text);
 				      rendermathnode(outnode);
 				  },
 
@@ -786,6 +901,9 @@ function normalizemathunicode(str) {
 	str = str.replace(/λ/g,"lambda").replace(/ρ/g,"rho").replace(/τ/g,"tau").replace(/χ/g,"chi").replace(/ω/g,"omega");
 	str = str.replace(/Ω/g,"Omega").replace(/Γ/g,"Gamma").replace(/Φ/g,"Phi").replace(/Δ/g,"Delta").replace(/Σ/g,"Sigma");
     str = str.replace(/&(ZeroWidthSpace|nbsp);/g, ' ').replace(/\u200B/g, ' ');
+    str = str.replace(/degree\s+s\b/g,'degree');
+    // remove extra parens on numbers, like roots and logs
+    str = str.replace(/\(\((-?\d+)\)\)/g, '($1)');
 	return str;
 }
 
@@ -802,16 +920,16 @@ function showPreview(qn) {
   var outstr = '';
   var res = processByType(qn);
   if (res.str) {
-    outstr = '`' + htmlEntities(res.str) + '`';
+    outstr += '`' + htmlEntities(res.str) + '`';
   }
   if (res.dispvalstr && res.dispvalstr != '' && params.calcformat.indexOf('showval')!=-1) {
-    outstr += (outstr==''?'':' = ') + '`' + htmlEntities(res.dispvalstr) + '`';
+    outstr += (outstr==''?'':' &asymp; ') + '`' + htmlEntities(res.dispvalstr) + '`';
   }
   if (res.err && res.err != '' && res.str != '') {
     outstr += (outstr=='``')?'':'. ' + '<span class=noticetext>' + res.err + '</span>';
   }
   if (LivePreviews.hasOwnProperty(qn)) {
-    LivePreviews[qn].RenderNow(outstr);
+    LivePreviews[qn].RenderNow(outstr, true);
   } else {
     var previewel = document.getElementById('p'+qn);
     previewel.innerHTML = outstr;
@@ -851,20 +969,23 @@ function showSyntaxCheckMQ(qn) {
   var res = processByType(qn);
   var outstr = '';
   if (res.dispvalstr && res.dispvalstr != '' && res.dispvalstr != 'NaN' && params.calcformat && params.calcformat.indexOf('showval')!=-1) {
-    outstr += ' = ' + htmlEntities(res.dispvalstr) + ' ';
+    outstr += '`' + htmlEntities(res.str) + '`';
+    if (params.qtype == 'calcmatrix' || params.qtype == 'calccomplexmatrix' || (params.qtype == 'calcinterval' && params.calcformat.match(/inequality/))) {
+        outstr += ' &asymp; `' + htmlEntities(res.dispvalstr) + '` ';
+    } else {
+        outstr += ' &asymp; ' + htmlEntities(res.dispvalstr) + ' ';
+    }
   }
   if (res.err && res.err != '' && res.str != '') {
     outstr += '<span class=noticetext>' + res.err + '</span>';
   }
   if (LivePreviews.hasOwnProperty(qn) && (mathRenderer=="MathJax" || mathRenderer=="Katex")) {
-    var previewel = document.getElementById('p'+qn).firstChild;
-    previewel.innerHTML = outstr;
-    previewel.style.visibility = '';
-    previewel.style.position = '';
+    LivePreviews[qn].RenderNow(outstr, true);
   } else {
     var previewel = document.getElementById('p'+qn);
     if (previewel) {
         previewel.innerHTML = outstr;
+        rendermathnode(previewel);
     }
   }
   if (document.getElementById("qn"+qn)) {
@@ -920,8 +1041,11 @@ function preSubmitString(name, str) {
   var params = allParams[qn];
   str = normalizemathunicode(str);
   str = str.replace(/^\s+/,'').replace(/\s+$/,'');
-  if (params.qtype == 'numfunc') {
+  if (params.qtype == 'numfunc' && name.substr(0,2) != 'qs') {
     str = AMnumfuncPrepVar(qn, str)[3];
+  }
+  if (str.length > 30000) {
+    str = str.substr(0,30000);
   }
   return str;
 }
@@ -945,12 +1069,16 @@ function processByType(qn) {
     return {};
   } else if (params.hasOwnProperty('matrixsize')) {
     res = processSizedMatrix(qn);
+  } else if (params.qtype == 'molecule') {
+    processMolecule(qn);
+    return {};
   } else {
     var el = document.getElementById('qn'+qn);
     if (!el) {
       return false;
     }
     var str = el.value;
+
     str = normalizemathunicode(str);
     str = str.replace(/^\s+/,'').replace(/\s+$/,'');
     if (str.match(/^\s*$/)) {
@@ -977,20 +1105,26 @@ function processByType(qn) {
         break;
       case 'ntuple':
       case 'calcntuple':
-        res = processCalcNtuple(str, params.calcformat);
+      case 'complexntuple':
+      case 'calccomplexntuple':
+      case 'algntuple':
+        res = processCalcNtuple(qn, str, params.calcformat, params.qtype);
         break;
       case 'complex':
       case 'calccomplex':
         res = processCalcComplex(str, params.calcformat);
         break;
-      case 'calcmatrix':
-        res = processCalcMatrix(str, params.calcformat);
-        break;
       case 'numfunc':
         res = processNumfunc(qn, str, params.calcformat);
         break;
       case 'matrix':
-        res = processCalcMatrix(str, 'decimal');
+      case 'complexmatrix':
+        res = processCalcMatrix(qn, str, params.calcformat, params.qtype);
+        break;
+      case 'calcmatrix':
+      case 'calccomplexmatrix':
+      case 'algmatrix':
+        res = processCalcMatrix(qn, str, params.calcformat, params.qtype);
         break;
     }
     res.str = preformat(qn, str, params.qtype, params.calcformat);
@@ -1064,7 +1198,7 @@ function AMnumfuncPrepVar(qn,str) {
   	if (vars[i] == "E" || vars[i] == "e") {
           foundaltcap[i] = true;  // always want to treat e and E as different
 	  } else {
-	  	foundaltcap[i] = false;
+	  	foundaltcap[i] = allParams[qn].calcformat.match(/casesensitivevars/); // default false unless casesensitivevars is used
 	  	for (var j=0; j<vars.length; j++) {
 	  		if (i!=j && vars[j].toLowerCase()==vars[i].toLowerCase() && vars[j]!=vars[i]) {
 	  			foundaltcap[i] = true;
@@ -1093,6 +1227,9 @@ function AMnumfuncPrepVar(qn,str) {
      }
      return p1;
     });
+  // fix variable pairs being interpreted as asciimath symbol, like in
+  dispstr = dispstr.replace(/(@v\d+@)(@v\d+@)/g,"$1 $2");
+  dispstr = dispstr.replace(/(@v\d+@)(@v\d+@)/g,"$1 $2");
   // fix display of /n!
   dispstr = dispstr.replace(/(@v(\d+)@|\d+(\.\d+)?)!(?!=)/g, '{:$&:}');
   dispstr = dispstr.replace(/@v(\d+)@/g, function(match,contents) {
@@ -1162,10 +1299,27 @@ function AMnumfuncPrepVar(qn,str) {
   	  dispstr = dispstr.replace(/([^a-zA-Z])g\^([\d\.]+)([^\d\.])/g, "$1g^$2{::}$3");
   	  dispstr = dispstr.replace(/([^a-zA-Z])g\(/g, "$1g{::}(");
   }
-
   return [str,dispstr,vars.join("|"),submitstr];
 }
 
+/**
+ * Rounds values for showval display to 4 decimal places or 4 sigfigs, no trailing zeros.
+ * @param number|array vals 
+ * @returns 
+ */
+function roundForDisp(val) {
+    if (Array.isArray(val)) {
+        return val.map(roundForDisp);
+    } else if (typeof val == 'number') {
+        if (Math.abs(val) < 1) {
+            return val.toPrecision(4).replace(/\.?0+$/,'');
+        } else {
+            return val.toFixed(4).replace(/\.?0+$/,'');
+        }
+    } else {
+        return val;
+    }
+}
 
 /**
  *  These functions should return:
@@ -1266,7 +1420,18 @@ function AMnumfuncPrepVar(qn,str) {
 
                  var pts = str.split(/\s*\*\s*/);
                  for (var i=0; i<pts.length; i++) {
-                     if (!unitsregexfull.test(pts[i]) && !unitsregexfull100.test(pts[i]) && !unitsregexfull001.test(pts[i]) && !unitsregexfull101.test(pts[i]) && !unitsregexfull201.test(pts[i]) && !unitsregexfull011.test(pts[i]) && !unitsregexfull211.test(pts[i])) {
+                    // get matches
+                    unitsregexmatch = pts[i].match(unitsregexfull101);
+                    let unitsbadcase = false;
+                    // It should have three defined matches:  [fullmatch, prefix, unit]
+                    if (unitsregexmatch && typeof unitsregexmatch[1] !== 'undefined') {
+                        // check that the prefix match is case sensitive
+                        var unitsregexabbprefixfull = new RegExp("^" + unitsregexabbprefix + "$");
+                        if (!unitsregexabbprefixfull.test(unitsregexmatch[1])) {
+                            unitsbadcase = true;
+                        }
+                     }
+                     if ((!unitsregexfull.test(pts[i]) && !unitsregexfull100.test(pts[i]) && !unitsregexfull001.test(pts[i]) && !unitsregexfull101.test(pts[i]) && !unitsregexfull201.test(pts[i]) && !unitsregexfull011.test(pts[i]) && !unitsregexfull211.test(pts[i])) || unitsbadcase) {
                          err += _('Unknown unit ')+'"'+pts[i]+'". ';
                      }
                  }
@@ -1310,7 +1475,7 @@ function processCalculated(fullstr, format) {
     err += res[1];
     outvals.push(res[0]);
   }
-  var dispstr = outvals.join(', ');
+  var dispstr = roundForDisp(outvals).join(', ');
   if (format.indexOf('set')!=-1) {
     dispstr = '{' + dispstr + '}';
   }
@@ -1357,7 +1522,7 @@ function processCalcInterval(fullstr, format, ineqvar) {
      strarr = fullstr.split(/\s*U\s*/i);
   }
 
-  var err = ''; var str, vals, res, calcvals = [];
+  var err = ''; var str, vals, res, calcvals = [], calcvalsdisp = [];
   for (i=0; i<strarr.length; i++) {
     str = strarr[i];
     sm = str.charAt(0);
@@ -1387,7 +1552,7 @@ function processCalcInterval(fullstr, format, ineqvar) {
         calcvals[j] = res[0];
       }
     }
-
+    calcvalsdisp = roundForDisp(calcvals);
     submitstrarr[i] = sm + calcvals[0] + ',' + calcvals[1] + em;
     if (format.indexOf('inequality')!=-1) {
       // reformat as inequality
@@ -1395,13 +1560,15 @@ function processCalcInterval(fullstr, format, ineqvar) {
         if (calcvals[1].toString().match(/oo/)) {
           dispstrarr[i] = 'RR';
         } else {
-          dispstrarr[i] = ineqvar + (em==']'?'le':'lt') + calcvals[1];
+          dispstrarr[i] = ineqvar + (em==']'?' le ':' lt ') + calcvalsdisp[1];
         }
       } else if (calcvals[1].toString().match(/oo/)) {
-        dispstrarr[i] = ineqvar + (sm=='['?'ge':'gt') + calcvals[0];
+        dispstrarr[i] = ineqvar + (sm=='['?' ge ':' gt ') + calcvalsdisp[0];
       } else {
-        dispstrarr[i] = calcvals[0] + (sm=='['?'le':'lt') + ineqvar + (em==']'?'le':'lt') + calcvals[1];
+        dispstrarr[i] = calcvalsdisp[0] + (sm=='['?' le ':' lt ') + ineqvar + (em==']'?' le ':' lt ') + calcvalsdisp[1];
       }
+    } else {
+        dispstrarr[i] = sm + calcvalsdisp[0] + ',' + calcvalsdisp[1] + em;
     }
   }
   if (format.indexOf('inequality')!=-1) {
@@ -1413,14 +1580,15 @@ function processCalcInterval(fullstr, format, ineqvar) {
   } else {
     return {
       err: err,
-      dispvalstr: submitstrarr.join(' uu '),
+      dispvalstr: dispstrarr.join(' uu '),
       submitstr: submitstrarr.join(joinchar)
     };
   }
 }
 
-function processCalcNtuple(fullstr, format) {
+function processCalcNtuple(qn, fullstr, format, qtype) {
   var outcalced = '';
+  var outcalceddisp = '';
   var NCdepth = 0;
   var lastcut = 0;
   var err = "";
@@ -1428,6 +1596,7 @@ function processCalcNtuple(fullstr, format) {
   var res = NaN;
   var dec;
   // Need to be able to handle (2,3),(4,5) and (2(2),3),(4,5) while avoiding (2)(3,4)
+  fullstr = normalizemathunicode(fullstr);
   fullstr = fullstr.replace(/(\s+,\s+|,\s+|\s+,)/g, ',').replace(/(^,|,$)/g,'');
   fullstr = fullstr.replace(/<<(.*?)>>/g, '<$1>');
   if (!fullstr.charAt(0).match(/[\(\[\<\{]/)) {
@@ -1437,6 +1606,7 @@ function processCalcNtuple(fullstr, format) {
     dec = false;
     if (NCdepth==0) {
       outcalced += fullstr.charAt(i);
+      outcalceddisp += fullstr.charAt(i);
       lastcut = i+1;
       if (fullstr.charAt(i)==',') {
         if (!fullstr.substring(i+1).match(/^\s*[\(\[\<\{]/) ||
@@ -1457,12 +1627,29 @@ function processCalcNtuple(fullstr, format) {
 
     if ((NCdepth==0 && dec) || (NCdepth==1 && fullstr.charAt(i)==',')) {
       sub = fullstr.substring(lastcut,i).replace(/^\s+/,'').replace(/\s+$/,'');
-      err += singlevalsyntaxcheck(sub, format);
-      err += syntaxcheckexpr(sub, format);
-      res = singlevaleval(sub, format);
-      err += res[1];
-      outcalced += res[0];
-      outcalced += fullstr.charAt(i);
+      if (sub == '') {notationok = false;}
+      if (qtype.match(/complex/)) {
+        res = evalcheckcomplex(sub, format);
+        err += res.err;
+        outcalceddisp += res.outstrdisp;
+        outcalceddisp += fullstr.charAt(i);
+        if (res.outstr) {
+            outcalced += res.outstr;
+            outcalced += fullstr.charAt(i);
+        }
+      } else if (qtype === 'algntuple') {
+        res = processNumfunc(qn, sub, format);
+        err += res.err;
+      } else {
+        err += singlevalsyntaxcheck(sub, format);
+        err += syntaxcheckexpr(sub, format);
+        res = singlevaleval(sub, format);
+        err += res[1];
+        outcalced += res[0];
+        outcalceddisp += roundForDisp(res[0]);
+        outcalced += fullstr.charAt(i);
+        outcalceddisp += fullstr.charAt(i);
+      }
       lastcut = i+1;
     }
   }
@@ -1472,9 +1659,15 @@ function processCalcNtuple(fullstr, format) {
   if (notationok==false) {
     err = _("Invalid notation")+". " + err;
   }
+  if (qtype === 'algntuple') {
+    outcalceddisp = '';
+  }
+  if (format.match(/generalcomplex/)) {
+    outcalced = '';
+  }
   return {
     err: err,
-    dispvalstr: outcalced,
+    dispvalstr: outcalceddisp,
     submitstr: outcalced
   };
 }
@@ -1487,44 +1680,30 @@ function processCalcComplex(fullstr, format) {
   var arr = fullstr.split(',');
   var str = '';
   var outstr = '';
+  var outstrdisp = '';
   var outarr = [];
-  var real, imag, imag2, prep;
+  var outarrdisp = [];
+  var real, imag, imag2, prep, res;
   for (var cnt=0; cnt<arr.length; cnt++) {
-    str = arr[cnt].replace(/^\s+/,'').replace(/\s+$/,'');
-    if (format.indexOf("allowjcomplex")!=-1) {
-      str = str.replace(/j/g,'i');
-    }
-    if (format.indexOf("sloppycomplex")==-1) {
-      var cparts = parsecomplex(str);
-      if (typeof cparts == 'string') {
-        err += cparts;
-      } else {
-        err += singlevalsyntaxcheck(cparts[0], format);
-        err += singlevalsyntaxcheck(cparts[1], format);
-      }
-    }
-    err += syntaxcheckexpr(str, format);
-    prep = prepWithMath(mathjs(str,'i'));
-    real = scopedeval('var i=0;'+prep);
-    imag = scopedeval('var i=1;'+prep);
-    imag2 = scopedeval('var i=-1;'+prep);
-    if (real=="synerr" || imag=="synerr") {
-      err += _("syntax incomplete");
-      real = NaN;
-    }
-
-    if (!isNaN(real) && real!="Infinity" && !isNaN(imag) && !isNaN(imag2) && imag!="Infinity") {
-      imag -= real;
-      outstr = Math.abs(real)<1e-16?'':real;
-      outstr += Math.abs(imag)<1e-16?'':((imag>0&&outstr!=''?'+':'')+imag+'i');
-      outarr.push(outstr);
+    res = evalcheckcomplex(arr[cnt], format);
+    err += res.err;
+    outarrdisp.push(res.outstrdisp);
+    if (res.outstr) {
+        outarr.push(res.outstr);
     }
   }
-  return {
-    err: err,
-    dispvalstr: outarr.join(', '),
-    submitstr: outarr.join(',')
-  };
+  if (format.indexOf("generalcomplex")!=-1) {
+    return {
+      err: err,
+      dispvalstr: outarrdisp.join(', ')
+    };
+  } else {
+    return {
+      err: err,
+      dispvalstr: outarrdisp.join(', '),
+      submitstr: outarr.join(',')
+    };
+  }
 }
 
 function processSizedMatrix(qn) {
@@ -1538,7 +1717,7 @@ function processSizedMatrix(qn) {
   var outcalc = [];
   var outsub = [];
   var count = 0;
-  var str;
+  var str, res;
   var err = '';
   for (var row=0; row < size[0]; row++) {
     out[row] = [];
@@ -1546,29 +1725,41 @@ function processSizedMatrix(qn) {
     for (var col=0; col<size[1]; col++) {
       str = document.getElementById('qn' + qn + '-' + count).value;
       str = normalizemathunicode(str);
-      if (str !== '') {
-        err += syntaxcheckexpr(str,format);
-        err += singlevalsyntaxcheck(str,format);
+      if (params.qtype.match(/complex/)) {
+        res = evalcheckcomplex(str, format);
+        err += res.err;
+        outcalc[row][col] = res.outstrdisp;
+        if (res.outstr) {
+            outsub.push(res.outstr);
+        }
+      } else if (params.qtype === 'algmatrix') {
+        res = processNumfunc(qn, str, format);
+        err += res.err;
+      } else {
+        if (str !== '') {
+            err += syntaxcheckexpr(str,format);
+            err += singlevalsyntaxcheck(str,format);
+        }
+        out[row][col] = str;
+        res = singlevaleval(str, format);
+        err += res[1];
+        outcalc[row][col] = res[0];
+        outsub.push(res[0]);
       }
-      out[row][col] = str;
-      res = singlevaleval(str, format);
-      err += res[1];
-      outcalc[row][col] = res[0];
-      outsub.push(res[0]);
       count++;
     }
     out[row] = '(' + out[row].join(',') + ')';
-    outcalc[row] = '(' + outcalc[row].join(',') + ')';
+    outcalc[row] = '(' + roundForDisp(outcalc[row]).join(',') + ')';
   }
   return {
     err: err,
     str: '[' + out.join(',') + ']',
-    dispvalstr: (params.qtype=='calcmatrix')?('[' + outcalc.join(',') + ']'):'',
+    dispvalstr: (params.qtype.match(/calc/))?('[' + outcalc.join(',') + ']'):'',
     submitstr: outsub.join('|')
   };
 }
 
-function processCalcMatrix(fullstr, format) {
+function processCalcMatrix(qn, fullstr, format, anstype) {
   var okformat = true;
   fullstr = fullstr.replace(/\[/g, '(');
   fullstr = fullstr.replace(/\]/g, ')');
@@ -1604,7 +1795,7 @@ function processCalcMatrix(fullstr, format) {
   if (MCdepth !== 0) {
     okformat = false;
   }
-  var collist, str;
+  var collist, str, res;
   var outcalc = [];
   var outsub = [];
   for (var i=0; i<rowlist.length; i++) {
@@ -1620,12 +1811,22 @@ function processCalcMatrix(fullstr, format) {
         blankerr = _('No elements of the matrix should be left blank.');
         outcalc[i][j] = '';
         outsub.push('');
+      } else if (anstype === 'algmatrix') {
+        res = processNumfunc(qn, str, format);
+        err += res.err;
+      } else if (anstype.match(/complex/)) {
+        res = evalcheckcomplex(str, format);
+        err += res.err;
+        outcalc[i][j] = res.outstrdisp;
+        if (res.outstr) {
+            outsub.push(res.outstr);
+        }
       } else {
         err += syntaxcheckexpr(str,format);
         err += singlevalsyntaxcheck(str,format);
         res = singlevaleval(str, format);
         err += res[1];
-        outcalc[i][j] = res[0];
+        outcalc[i][j] = roundForDisp(res[0]);
         outsub.push(res[0]);
       }
     }
@@ -1677,6 +1878,8 @@ function processNumfunc(qn, fullstr, format) {
             }
         } else if (totesteqn.match(/(<=|>=|<|>|!=)/g).length>1) {
             err += _("syntax error: your inequality should only contain one inequality symbol")+ '. ';
+        } else if (totesteqn.match(/(^(<|>|!))|(=|>|<)$/)) {
+            err += _("syntax error: your inequality should have expressions on both sides")+ '. ';
         }
         totesteqn = totesteqn.replace(/(.*)(<=|>=|<|>|!=)(.*)/,"$1-($3)");
     } else if (totesteqn.match(/=/)) {
@@ -1686,6 +1889,8 @@ function processNumfunc(qn, fullstr, format) {
             err += _("syntax error: you gave an equation, not an expression")+ '. ';
         } else if (totesteqn.match(/=/g).length>1) {
             err += _("syntax error: your equation should only contain one equal sign")+ '. ';
+        } else if (totesteqn.match(/(^=)|(=$)/)) {
+            err += _("syntax error: your equation should have expressions on both sides")+ '. ';
         }
         totesteqn = totesteqn.replace(/(.*)=(.*)/,"$1-($2)");
     } else if (iseqn && isineq) {
@@ -1695,39 +1900,55 @@ function processNumfunc(qn, fullstr, format) {
     } else if (isineq) {
         err += _("syntax error: this is not an inequality")+ '. ';
     }
-    if (fvars.length > 0) {
-        reg = new RegExp("("+fvars.join('|')+")\\(","g");
-        totesteqn = totesteqn.replace(/\w+/g, functoindex); // avoid sqrt(3) matching t() funcvar
-        totesteqn = totesteqn.replace(reg,"$1*sin($1+");
-        totesteqn = totesteqn.replace(/@(\d+)@/g, indextofunc);
-    }
+    if (!format.match(/generalcomplex/)) {
+      if (fvars.length > 0) {
+          reg = new RegExp("("+fvars.join('|')+")\\(","g");
+          totesteqn = totesteqn.replace(/\w+/g, functoindex); // avoid sqrt(3) matching t() funcvar
+          totesteqn = totesteqn.replace(reg,"$1*sin($1+");
+          totesteqn = totesteqn.replace(/@(\d+)@/g, indextofunc);
+      }
 
-    totesteqn = prepWithMath(mathjs(totesteqn,remapVars.join('|')));
-    successfulEvals = 0;
-    for (j=0; j < 20; j++) {
-        totest = 'var DNE=1;';
-        for (i=0; i < remapVars.length - 1; i++) {  // -1 to skip DNE pushed to end
-        if (domain[i][2]) { //integers
-            testval = Math.floor(Math.random()*(domain[i][0] - domain[i][1] + 1) + domain[i][0]);
-        } else { //any real between min and max
-            testval = Math.random()*(domain[i][0] - domain[i][1]) + domain[i][0];
-        }
-        totest += 'var ' + remapVars[i] + '=' + testval + ';';
-        }
-        res = scopedeval(totest + totesteqn);
-        if (res !== 'synerr') {
-        successfulEvals++;
-        break;
-        }
+      totesteqn = prepWithMath(mathjs(totesteqn,remapVars.join('|')));
+      successfulEvals = 0;
+      for (j=0; j < 20; j++) {
+          totest = 'var DNE=1;';
+          for (i=0; i < remapVars.length - 1; i++) {  // -1 to skip DNE pushed to end
+            if (domain[i][2]) { //integers
+                //testval = Math.floor(Math.random()*(domain[i][0] - domain[i][1] + 1) + domain[i][0]);
+                testval = Math.floor(domain[i][0] + (domain[i][1] - domain[i][0])*j/20);
+            } else { //any real between min and max
+                //testval = Math.random()*(domain[i][1] - domain[i][0]) + domain[i][0];
+                testval = domain[i][0] + (domain[i][1] - domain[i][0])*j/20;
+            }
+            totest += 'var ' + remapVars[i] + '=' + testval + ';';
+          }
+          res = scopedeval(totest + totesteqn);
+          console.log(totest + totesteqn + ',res:'+res);
+          if (res !== 'synerr') {
+            successfulEvals++;
+            break;
+          }
+      }
+      if (successfulEvals === 0) {
+          err += _("syntax error") + '. ';
+      }
     }
-    if (successfulEvals === 0) {
-        err += _("syntax error") + '. ';
-    }
-    err += syntaxcheckexpr(strprocess[0], format, vars.map(escapeRegExp).join('|'));
+    err += syntaxcheckexpr(strprocess[0], format + ',isnumfunc', vars.map(escapeRegExp).join('|'));
   }
   return {
     err: err
   };
+}
+
+function processMolecule(qn) {
+  var mol = allKekule[qn].exportObjs(Kekule.Molecule)[0];
+  if (typeof mol === 'undefined') {
+    document.getElementById("qn" + qn).value = '';
+  } else {
+    var smi = Kekule.IO.saveFormatData(mol, 'smi');
+    var cml = Kekule.IO.saveFormatData(mol, 'cml');
+    document.getElementById("qn" + qn).value = smi + '~~~' + cml;
+  }
 }
 
 function simplifyVariable(str) {
@@ -1800,12 +2021,65 @@ function ineqtointerval(strw, intendedvar) {
   return [outstr];
 }
 
+function evalcheckcomplex(str, format) {
+    var err = '';
+    var out = '';
+    var outstr = '';
+    var outstrdisp = '';
+    str = str.replace(/^\s+/,'').replace(/\s+$/,'');
+    if (format.indexOf("allowjcomplex")!=-1) {
+        str = str.replace(/j/g,'i');
+    }
+    // general check
+    err += syntaxcheckexpr(str, format);
+    if (format.indexOf("generalcomplex")!=-1) {
+        // no eval
+        return {
+            err: err,
+            outstrdisp: str
+        }
+    } else if (format.indexOf("sloppycomplex")==-1) {
+        // regular a+bi complex; check formats
+        var cparts = parsecomplex(str);
+        if (typeof cparts == 'string') {
+            err += cparts;
+        } else {
+            err += singlevalsyntaxcheck(cparts[0], format);
+            err += singlevalsyntaxcheck(cparts[1], format);
+        }
+    }
+    
+    // evals
+    if (str !== '') {
+        var prep = prepWithMath(mathjs(str,'i'));
+        var real = scopedeval('var i=0;'+prep);
+        var imag = scopedeval('var i=1;'+prep);
+        var imag2 = scopedeval('var i=-1;'+prep);
+        if (real=="synerr" || imag=="synerr") {
+        err += _("syntax incomplete");
+        real = NaN;
+        }
+        if (!isNaN(real) && real!="Infinity" && !isNaN(imag) && !isNaN(imag2) && imag!="Infinity") {
+            imag -= real;
+            outstr = Math.abs(real)<1e-16?'':real;
+            outstrdisp = Math.abs(real)<1e-16?'':roundForDisp(real);
+            outstr += Math.abs(imag)<1e-16?'':((imag>0&&outstr!=''?'+':'')+imag+'i');
+            outstrdisp += Math.abs(imag)<1e-16?'':((imag>0&&outstr!=''?'+':'')+roundForDisp(imag)+'i');
+        }
+    }
+    return {
+        err: err,
+        outstrdisp: outstrdisp,
+        outstr: outstr
+    };
+}
+
 function parsecomplex(v) {
 	var real,imag,c,nd,p,R,L;
 	v = v.replace(/\s/,'');
 	v = v.replace(/\((\d+\*?i|i)\)\/(\d+)/g,'$1/$2');
-	v = v.replace(/sin/,'s$n');
-	v = v.replace(/pi/,'p$');
+	v = v.replace(/sin/g,'s$n');
+	v = v.replace(/pi/g,'p$');
 	var len = v.length;
 	//preg_match_all('/(\bi|i\b)/',v,matches,PREG_OFFSET_CAPTURE);
 	//if (count(matches[0])>1) {
@@ -1907,10 +2181,10 @@ function parsecomplex(v) {
 				real = real.substr(1);
 			}
 		}
-		real = real.replace("s$n","sin");
-		real = real.replace("p$","pi");
-		imag = imag.replace("s$n","sin");
-		imag = imag.replace("p$","pi");
+		real = real.replace(/s\$n/g,"sin");
+		real = real.replace(/p\$/g,"pi");
+		imag = imag.replace(/s\$n/g,"sin");
+		imag = imag.replace(/p\$/g,"pi");
 		imag = imag.replace(/\*\//g,"/");
 		return [real,imag];
 	}
@@ -1938,7 +2212,7 @@ function singlevalsyntaxcheck(str,format) {
 	} else if (format.indexOf('fraction')!=-1 || format.indexOf('reducedfraction')!=-1) {
 		  str = str.replace(/([0-9])\s+([0-9])/g,"$1*$2").replace(/\s/g,'');
 		 // if (!str.match(/^\s*\-?\(?\d+\s*\/\s*\-?\d+\)?\s*$/) && !str.match(/^\s*?\-?\d+\s*$/)) {
-		  if (!str.match(/^\(?\-?\(?\d+\)?\/\(?\d+\)?$/) && !str.match(/^\(?\d+\)?\/\(?\-?\d+\)?$/) && !str.match(/^\s*?\-?\d+\s*$/)) {
+		  if (!str.match(/^\(?\-?\(?\d+\)?\/\(?\-?\d+\)?$/) && !str.match(/^\s*?\-?\d+\s*$/)) {
 			return (_("not a valid fraction")+". ");
 		  }
 	} else if (format.indexOf('mixednumber')!=-1) {
@@ -1952,7 +2226,7 @@ function singlevalsyntaxcheck(str,format) {
 		  if (!str.match(/^\-?[1-9](\.\d*)?(\*|xx)10\^(\(?\(?\-?\d+\)?\)?)$/)) {
 		  	if (format.indexOf('scinotordec')==-1) { //not scinotordec
 		  		return (_("not valid scientific notation")+". ");
-		  	} else if (!str.match(/^\-?(\d+|\d+\.\d*|\d*\.\d+)$/)) {
+		  	} else if (!str.match(/^\-?(\d+|\d+\.\d*|\d*\.\d+)([eE]\-?\d+)?$/)) {
 		  		return (_("not valid decimal or scientific notation")+". ");
 		  	}
 		  }
@@ -1960,11 +2234,13 @@ function singlevalsyntaxcheck(str,format) {
 		if (!str.match(/^\-?(\d+|\d+\.\d*|\d*\.\d+)([eE]\-?\d+)?$/)) {
 			return (_(" not a valid integer or decimal number")+". ");
 		}
-	} else if (!onlyAscii.test(str)) {
-		return _("Your answer contains an unrecognized symbol")+". ";
-  	} else if (str.match(/=/)) {
-        return _("You gave an equation, not an expression")+ '. ';
+	} else if (format.indexOf('integer')!=-1) {
+    if (!str.match(/^\s*\-?\d+(\.0*)?\s*$/)) {
+      return (_(" not an integer number")+". ");
     }
+  } else if (!onlyAscii.test(str)) {
+		return _("Your answer contains an unrecognized symbol")+". ";
+  } 
 	return '';
 }
 
@@ -2010,12 +2286,25 @@ function syntaxcheckexpr(str,format,vl) {
 		  err += "["+_("use function notation")+" - "+_("use $1 instead of $2",errstuff[1]+"("+errstuff[2]+")",errstuff[0])+"]. ";
 	  }
 	  if (vl) {
-          var reglist = 'degree|arc|arg|ar|sqrt|root|ln|log|exp|sinh|cosh|tanh|sech|csch|coth|sin|cos|tan|sec|csc|cot|abs|pi|sign|DNE|e|oo'.split('|').concat(vl.split('|'));
-          reglist.sort(function(x,y) { return y.length - x.length});
-	  	  reg = new RegExp("(repvars\\d+|"+reglist.join('|')+")", "ig");
-	  	  if (str.replace(reg,'').match(/[a-zA-Z]/)) {
-	  	  	err += _(" Check your variables - you might be using an incorrect one")+". ";
-	  	  }
+      if (format.match(/casesensitivevars/)) {
+        var reglist = 'degree|arc|arg|ar|sqrt|root|ln|log|exp|sinh|cosh|tanh|sech|csch|coth|sin|cos|tan|sec|csc|cot|abs|pi|sign|DNE|e|oo'.split('|');
+        reglist.sort(function(x,y) { return y.length - x.length});
+        let reg1 = new RegExp("(repvars\\d+|"+reglist.join('|')+")", "ig");
+        var reglist = vl.split('|');
+        reglist.sort(function(x,y) { return y.length - x.length});
+        let reg2 = new RegExp("(repvars\\d+|"+reglist.join('|')+")", "g");
+        if (str.replace(reg1,'').replace(reg2,'').match(/[a-zA-Z]/)) {
+          err += _(" Check your variables - you might be using an incorrect one")+". ";
+        }
+      } else {
+        var reglist = 'degree|arc|arg|ar|sqrt|root|ln|log|exp|sinh|cosh|tanh|sech|csch|coth|sin|cos|tan|sec|csc|cot|abs|pi|sign|DNE|e|oo'.split('|').concat(vl.split('|'));
+        reglist.sort(function(x,y) { return y.length - x.length});
+	  	  let reg = new RegExp("(repvars\\d+|"+reglist.join('|')+")", "ig");
+        if (str.replace(reg,'').match(/[a-zA-Z]/)) {
+          err += _(" Check your variables - you might be using an incorrect one")+". ";
+        }
+      }
+      
 	  }
 	  if ((str.match(/\|/g)||[]).length>2) {
 	  	  var regex = /\|.*?\|\s*(.|$)/g;
@@ -2026,9 +2315,15 @@ function syntaxcheckexpr(str,format,vl) {
 	  	  	}
 	  	  }
 	  }
+    if (str.match(/\(\s*\)/)) {
+      err += _(" Empty function input or parentheses") + ". ";
+    }
 	  if (str.match(/%/) && !str.match(/^\s*[+-]?\s*((\d+(\.\d*)?)|(\.\d+))\s*%\s*$/)) {
 	  	  err += _(" Do not use the percent symbol, %")+". ";
 	  }
+      if (str.match(/=/) && !format.match(/isnumfunc/)) {
+        err += _("You gave an equation, not an expression")+ '. ';
+      }
 
 	  return err;
 }
@@ -2053,7 +2348,7 @@ function singlevaleval(evalstr, format) {
   }
   try {
     var res = scopedmatheval(evalstr);
-    if (res === '') {
+    if (res === '' || typeof res === 'undefined') {
       return [NaN, _("syntax incomplete")+". "];
     }
     return [res, ''];
@@ -2068,7 +2363,12 @@ function escapeRegExp(string) {
 
 function scopedeval(c) {
 	try {
-		return eval(c);
+    return eval(c);
+    /* we don't check for 
+      if (Number.isNaN(v)) {
+      because we don't want to give away if values just aren't
+      in domain of student's function
+    */
 	} catch(e) {
 		return "synerr";
 	}
@@ -2121,6 +2421,7 @@ function toggleinlinebtn(n,p){ //n: target, p: click el
 	}
 	var k=btn.innerHTML;
 	btn.innerHTML = k.match(/\[\+\]/)?k.replace(/\[\+\]/,'[-]'):k.replace(/\[\-\]/,'[+]');
+    sendLTIresizemsg();
 }
 
 var seqgroupcollapsed = {};
@@ -2160,6 +2461,7 @@ function setupSeqPartToggles(base) {
                         $("#"+ctls).slideToggle(300);
                         var pts = ctls.substr(6).split("-");
                         seqgroupcollapsed[pts[0]][pts[1]] = state;
+                        sendLTIresizemsg();
                     }
                 }));
             }

@@ -2,8 +2,8 @@
 
 namespace IMathAS\assess2\questions\scorepart;
 
-require_once(__DIR__ . '/ScorePart.php');
-require_once(__DIR__ . '/../models/ScorePartResult.php');
+require_once __DIR__ . '/ScorePart.php';
+require_once __DIR__ . '/../models/ScorePartResult.php';
 
 use IMathAS\assess2\questions\models\ScorePartResult;
 use IMathAS\assess2\questions\models\ScoreQuestionParams;
@@ -49,7 +49,7 @@ class NumberScorePart implements ScorePart
         
         $hasUnits = in_array('units',$ansformats);
         if ($hasUnits) {
-            require_once(__DIR__.'/../../../assessment/libs/units.php');
+            require_once __DIR__.'/../../../assessment/libs/units.php';
         }
         
         $givenans = normalizemathunicode($givenans);
@@ -221,7 +221,7 @@ class NumberScorePart implements ScorePart
                 }
             }
 
-            $gaarr[$k] = trim(str_replace(array('$',',',' ','/','^','*'),'',$v));
+            $gaarr[$k] = trim(str_replace(array('$',',',' '),'',$v));
             if (strtoupper($gaarr[$k])=='DNE') {
                 $gaarr[$k] = 'DNE';
             } else if ($gaarr[$k]=='oo' || $gaarr[$k]=='-oo' || $gaarr[$k]=='-oo') {
@@ -229,7 +229,8 @@ class NumberScorePart implements ScorePart
             } else if (preg_match('/\d\s*(x|y|z|r|t|i|X|Y|Z|I|pi)([^a-zA-Z]|$)/', $gaarr[$k])) {
                 //has a variable - don't strip
             } else {
-                $gaarr[$k] = preg_replace('/^((-|\+)?(\d+\.?\d*|\.\d+)[Ee]?[+\-]?\d*)[^+\-]*$/','$1',$gaarr[$k]); //strip out units
+                //strip out units. Must start with a letter
+                $gaarr[$k] = preg_replace('/^((-|\+)?(\d+\.?\d*|\.\d+)([Ee]([+\-]\d+|\d+)))?\s*[a-zA-Z][^+\-]*$/','$1',$gaarr[$k]);
             }
         }
         if (in_array('orderedlist',$ansformats)) {
@@ -264,7 +265,7 @@ class NumberScorePart implements ScorePart
                             $anss[$k] = $anssUnits[0];
                             $anssunits[$k] = $anssUnits;
                         } else {
-                            echo "Invalid answer $anans";
+                            //echo "Invalid answer $anans";
                             $anssunits[$j] = [0,'invalidans',0,0];
                         }
                     }

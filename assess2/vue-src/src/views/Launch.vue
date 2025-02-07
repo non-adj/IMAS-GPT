@@ -27,7 +27,7 @@
         v-if = "errorMsg !== null"
       >
         {{ errorMsg }}
-      <p>
+      </p>
 
       <p
         v-if = "timeLimitExpired !== ''"
@@ -123,6 +123,11 @@
       <summary-gb-score />
       <previous-attempts :caption = "$t('prev.previous_attempts')" />
     </div>
+    <div v-else-if="showGbLink" class="pane-body">
+      <p>
+        <a :href="gbUrl">{{ $t('prev.viewingb') }}</a>
+      </p>
+    </div>
   </div>
 </template>
 
@@ -194,7 +199,7 @@ export default {
       }
     },
     okToLaunch () {
-      if (!this.canViewAll &&
+      if (!this.showPreviewAll &&
         this.aInfo.isgroup === 3 &&
         this.aInfo.group_members.length === 0
       ) {
@@ -230,11 +235,26 @@ export default {
     canAddWork () {
       return ((!this.aInfo.has_active_attempt ||
         this.aInfo.submitby === 'by_question') &&
-        this.aInfo.showwork_after
+        this.aInfo.showwork_after &&
+        (this.aInfo.showwork_cutoff === 0 || this.aInfo.showwork_cutoff_in > 0)
       );
     },
     showTutorLinks () {
       return this.aInfo.hasOwnProperty('tutor_gblinks');
+    },
+    showGbLink () {
+      return (this.aInfo.is_lti &&
+        this.aInfo.viewingb === 'immediately' &&
+        this.aInfo.has_active_attempt &&
+        !store.assessInfo.can_view_all
+      );
+    },
+    gbUrl () {
+      let url = 'gbviewassess.php?';
+      url += 'cid=' + store.cid;
+      url += '&aid=' + store.aid;
+      url += '&uid=' + store.uid;
+      return url;
     }
   },
   methods: {
@@ -285,6 +305,11 @@ export default {
       var script = document.createElement('script');
       script.src = 'https://' + this.aInfo.livepoll_server + ':3000/socket.io/socket.io.js';
       document.getElementsByTagName('head')[0].appendChild(script);
+    } else if (this.aInfo.displaymethod === 'video_cued' && !window.YT) {
+      const tag = document.createElement('script');
+      tag.id = 'yt_player_api';
+      tag.src = 'https://www.youtube.com/player_api';
+      document.head.appendChild(tag);
     }
     setTimeout(window.drawPics, 50);
     window.rendermathnode(this.$refs.summary);

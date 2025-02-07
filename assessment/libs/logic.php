@@ -424,7 +424,7 @@ function logicsteps($exp){
 // Note: This will not change the value of anstypes, or questions. Use truthtableanswercount to get the total number of answerboxes used.
 function truthtable($exp, $showresult=FALSE,$showsteps=TRUE,$offset=0){
 	// Table stylesheet
-    $stylesheet = '<style type="text/css">.logictable th, .logictable td {border:2px solid; text-align: left; padding: 10px; text-align: center; vertical-align: center;} table.logictable {border: 0px solid; margin: 3px; border-collapse:collapse; border-style: hidden;} </style>';
+    $stylesheet = '<style type="text/css">.logictable th, .logictable td {border:2px solid; padding: 10px; text-align: center; vertical-align: center;} table.logictable {border: 0px solid; margin: 3px; border-collapse:collapse; border-style: hidden;} </style>';
     // Convert to postfix
     $exp = logicToPostfix($exp);
     // ID variables
@@ -510,7 +510,7 @@ function truthtableanswers($exp,$showsteps=TRUE){
     // Find variables
     $vars = array();
     foreach($exp as $token){
-        if(preg_match('/[A-Za-z]/u',$token)){
+        if(preg_match('/[A-Za-z]/u',$token) && !in_array($token,$vars)){
             $vars[] = $token;
         }
     }

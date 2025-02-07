@@ -9,13 +9,13 @@
 //3 - CC-BY-SA-NC
 //4 - CC-BY-SA
 
-	require("../init.php");
+	require_once "../init.php";
 
 
 	if ($myrights<20) {
-		require("../header.php");
+		require_once "../header.php";
 		echo _("You need to log in as a teacher to access this page");
-		require("../footer.php");
+		require_once "../footer.php";
 		exit;
 	}
 
@@ -93,12 +93,17 @@
         $addq = 'addquestions';
         $from = 'addq';
     }
+    $viewonly = false;
+    if (!empty($_GET['viewonly']) || !empty($_POST['viewonly']) ) {
+        $viewonly = true;
+    }
+
 	$testqpage = ($cid == 0 || $courseUIver>1) ? 'testquestion2.php' : 'testquestion.php';
 
 	$outputmsg = '';
 	$errmsg = '';
 	if (isset($_POST['qtext'])) {
-		require_once("../includes/filehandler.php");
+		require_once "../includes/filehandler.php";
 		$now = time();
 		foreach (array('qcontrol','answer','solution') as $v) {
 			if (!isset($_POST[$v])) {$_POST[$v] = '';}
@@ -116,7 +121,7 @@
 		}
 
 		if (strpos($_POST['qtext'],'data:image')!==false) {
-			require_once("../includes/htmLawed.php");
+			require_once "../includes/htmLawed.php";
 			$_POST['qtext'] = convertdatauris($_POST['qtext']);
 		}
 
@@ -149,10 +154,25 @@
 			$vidid = getvideoid($_POST['helpurl']);
 			if ($vidid=='') {
 				$captioned = 0;
-			} else {
+			} else if (isset($CFG['YouTubeAPIKey'])) {
+                $captioned = 0;
+                $ctx = stream_context_create(array('http'=>array('timeout' => 1)));
+                $resp = @file_get_contents('https://youtube.googleapis.com/youtube/v3/captions?part=snippet&videoId='.$vidid.'&key='.$CFG['YouTubeAPIKey'], false, $ctx);
+                $capdata = json_decode($resp, true);
+                if ($capdata !== null && isset($capdata['items'])) {
+                    foreach ($capdata['items'] as $cap) {
+                        if ($cap['snippet']['trackKind'] == 'standard') {
+                            $captioned = 1;
+                            break;
+                        }
+                    }
+                }
+            } else {
 				$ctx = stream_context_create(array('http'=>
 				    array(
-					'timeout' => 1
+					'timeout' => 1,
+                    'header' => "Accept-language: en\r\n" . 
+                                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 				    )
 				));
 				$t = @file_get_contents('https://www.youtube.com/watch?v='.$vidid, false, $ctx);
@@ -186,11 +206,12 @@
 		$_POST['qtext'] = preg_replace('/<(\/?\w[^<>]*?)>/',"&&&L$1&&&G",$_POST['qtext']);
 		$_POST['qtext'] = str_replace(array("<",">"),array("&lt;","&gt;"),$_POST['qtext']);
 		$_POST['qtext'] = str_replace(array("&&&L","&&&G"),array("<",">"),$_POST['qtext']);
+        $_POST['solution'] = str_replace(array('<!--','-->'),array('&&&L!--','--&&&G'),$_POST['solution']);
 		$_POST['solution'] = preg_replace('/<([^<>]+?)>/',"&&&L$1&&&G",$_POST['solution']);
 		$_POST['solution'] = str_replace(array("<",">"),array("&lt;","&gt;"),$_POST['solution']);
 		$_POST['solution'] = str_replace(array("&&&L","&&&G"),array("<",">"),$_POST['solution']);
 
-        $isrand = preg_match('/(shuffle|getprimes?|rand[a-zA-Z]*)\(/',$_POST['control']) ? 1 : 0;
+        $isrand = preg_match('/((shuffle|getprimes?|rand[a-zA-Z]*)\s*\(|randweights)/',$_POST['control']) ? 1 : 0;
         if (!$isrand) { // check any included code
             preg_match_all('/includecodefrom\(\s*(\d+)\s*\)/',$_POST['control'],$matches,PREG_PATTERN_ORDER);
             if (!empty($matches[1])) {
@@ -243,6 +264,9 @@
 					}
 				}
 			}
+            if ($viewonly) { // view only: don't save edits
+                $isok = false;
+            }
 
 			//checked separately above now
 			//if (!$isadmin && !$isgrpadmin) { $query .= " AND (ownerid='$userid' OR userights>2);";}
@@ -533,7 +557,9 @@
 			}
 		}
 
-		if (!isset($_GET['aid'])) {
+		if (isset($_GET['daid'])) {
+			$outputmsg .=  "<a href=\"adddrillassess.php?cid=$cid&daid=".Sanitize::onlyInt($_GET['daid'])."\">"._("Return to Drill Assessment")."</a>\n";
+		} else if (!isset($_GET['aid'])) {
 			$outputmsg .= "<a href=\"manageqset.php?cid=$cid\">"._("Return to Question Set Management")."</a>\n";
 		} else {
 			if ($frompot==1) {
@@ -554,15 +580,17 @@
 		} else if ($quicksave){
 			// Don't echo or die if in quicksave mode.
 		} else {
-			if ($errmsg == '' && !isset($_GET['aid'])) {
+			if ($errmsg == '' && !empty($_GET['daid'])) {
+				header('Location: ' . $GLOBALS['basesiteurl'] . '/course/adddrillassess.php?cid='.$cid.'&daid='.Sanitize::onlyInt($_GET['daid']).'&r='.Sanitize::randomQueryStringParam());
+			} else if ($errmsg == '' && !isset($_GET['aid'])) {
 				header('Location: ' . $GLOBALS['basesiteurl'] . '/course/manageqset.php?cid='.$cid.'&r='.Sanitize::randomQueryStringParam());
 			} else if ($errmsg == '' && $frompot==0) {
 				header('Location: ' . $GLOBALS['basesiteurl'] . '/course/'.$addq.'.php?cid='.$cid.'&aid='.Sanitize::onlyInt($_GET['aid']).'&r='.Sanitize::randomQueryStringParam());
 			} else {
-				require("../header.php");
+				require_once "../header.php";
 				echo $errmsg;
 				echo $outputmsg;
-				require("../footer.php");
+				require_once "../footer.php";
 			}
 			exit;
 		}
@@ -657,7 +685,7 @@
 				$stm = $DBH->prepare("SELECT qrightsdef FROM imas_users WHERE id=:id");
                 $stm->execute(array(':id'=>$userid));
                 $qrightsdef = $stm->fetchColumn(0);
-				$line['userights'] = 0;
+				$line['userights'] = $CFG['GEN']['newQuestionUseRights'] ?? 0;
 
 			} else {
 				if ($isadmin) {
@@ -726,7 +754,7 @@
 			$stm = $DBH->prepare("SELECT qrightsdef FROM imas_users WHERE id=:id");
             $stm->execute(array(':id'=>$userid));
             $qrightsdef = $stm->fetchColumn(0);
-			$line['userights'] = 0;
+			$line['userights'] = $CFG['GEN']['newQuestionUseRights'] ?? 0;
             $line['author'] = '';
 			$line['license'] = isset($CFG['GEN']['deflicense'])?$CFG['GEN']['deflicense']:1;
             $line['otherattribution'] = '';
@@ -768,7 +796,11 @@
 
 			$addmod = _("Add");
 	}
-	if (!$myq) {
+    $canedit = $myq;
+    if ($viewonly) {
+        $canedit = false;
+    }
+	if (!$canedit) {
 		$addmod = _('View');
 	}
 
@@ -798,6 +830,7 @@
 	// Build form action
 	$formAction = "moddataset.php?process=true"
 		. (isset($_GET['cid']) ? "&cid=$cid" : "")
+		. (isset($_GET['daid']) ? "&daid=".Sanitize::encodeUrlParam($_GET['daid']) : "")
 		. (isset($_GET['aid']) ? "&aid=".Sanitize::encodeUrlParam($_GET['aid'])."&from=$from" : "")
 		. ((isset($_GET['id']) && !isset($_GET['template'])) ? "&id=".Sanitize::encodeUrlParam($_GET['id']) : "")
 		. (isset($_GET['template']) ? "&templateid=".Sanitize::encodeUrlParam($_GET['id']) : "")
@@ -850,7 +883,7 @@
 	*/
 	$useeditor = "noinit";
 	$placeinhead .= '<script type="text/javascript" src="'.$staticroot.'/javascript/codemirror/codemirror-compressed.js?v=091522"></script>';
-	$placeinhead .= '<script type="text/javascript" src="'.$staticroot.'/javascript/codemirror/imathas.js?v=022723"></script>';
+	$placeinhead .= '<script type="text/javascript" src="'.$staticroot.'/javascript/codemirror/imathas.js?v=012925"></script>';
 	$placeinhead .= '<link rel="stylesheet" href="'.$staticroot.'/javascript/codemirror/codemirror_min.css?v=091522">';
 
 	//$placeinhead .= '<script src="//sagecell.sagemath.org/embedded_sagecell.js"></script>'.PHP_EOL;
@@ -937,7 +970,7 @@
 			indentUnit: 2,
 			tabSize: 2,
             viewportMargin: 500,
-			'.(!$myq?'readOnly:true,':'').'
+			'.(!$canedit?'readOnly:true,':'').'
 			styleSelectedText:true
 		  });
 		  for (var i=0;i<qEditor[id].lineCount();i++) { qEditor[id].indentLine(i); }
@@ -954,7 +987,7 @@
 			indentUnit: 2,
 			tabSize: 2,
             viewportMargin: 500,
-			'.(!$myq?'readOnly:true,':'').'
+			'.(!$canedit?'readOnly:true,':'').'
 			styleSelectedText:true
 		      });
 		//controlEditor.setSize("100%",6+14*document.getElementById("control").rows);
@@ -996,6 +1029,28 @@
 	   		document.getElementById(id).rows -= 2;
 	   	}
 	   }
+        $(function() {
+          $("#qtypedd a[data-sn]").on("click", function(e) {
+            $("#qtypedd dd-active").removeClass("dd-active");
+            selectqtype(this.getAttribute("data-sn"));
+            $("#qtype").val(this.getAttribute("data-sn"));
+          });
+        });
+        function selectqtype(sn) {
+            // close all second-levels
+            $(".dropdown-submenu").removeClass("open");
+            $("#qtypedd a").removeClass("dd-active").attr("aria-expanded",false);
+            var selel = $("#qtypedd a[data-sn=" + sn + "]");
+            console.log("#qtypedd a[data-sn=" + sn + "]");
+            selel.addClass("dd-active"); 
+            selel.closest(".dropdown-submenu").addClass("open").children("a").addClass("dd-active").attr("aria-expanded",true);
+            var longname = selel.text();
+            if (selel.attr("data-ln")) {
+                longname = selel.attr("data-ln");
+            }
+            $("#qtypedd > button.dropdown-toggle").html(longname + " <span class=\'arrow-down\'></span>");
+        }
+        $(function() { selectqtype($("#qtype").val()); });
 	   </script>';
 	$placeinhead .= "<script src=\"$staticroot/javascript/solver.js?ver=110621\" type=\"text/javascript\"></script>\n";
 	$placeinhead .= '<style type="text/css">.CodeMirror {font-size: medium;border: 1px solid #ccc;}
@@ -1005,11 +1060,12 @@
 		.CodeMirror-selectedtext {color: #ffffff !important;background-color: #3366AA;}
 		.CodeMirror-focused .CodeMirror-selected {background: #3366AA;}
 		.CodeMirror-selected {background: #666666;}
+        .dd-active {background-color: #eef;}
 		</style>';
 	$placeinhead .= "<link href=\"$staticroot/course/solver.css?ver=230616\" rel=\"stylesheet\">";
 	$placeinhead .= "<style>.quickSaveButton {display:none;}</style>";
 
-	require("../header.php");
+	require_once "../header.php";
 
 
 	if (isset($_GET['aid'])) {
@@ -1047,7 +1103,7 @@
 		echo '<p class=noticetext>'._('This question has been marked for deletion.  This might indicate there is an error in the question. It is recommended you discontinue use of this question when possible').'</p>';
 	}
 
-	if (isset($inusecnt) && $inusecnt>0 && $myq) {
+	if (isset($inusecnt) && $inusecnt>0 && $canedit) {
 		/*
 		echo '<p class=noticetext>'._('This question is currently being used in ');
 		if ($inusecnt>1) {
@@ -1063,15 +1119,22 @@
 		echo "<p>".sprintf(_("%sTemplate this question%s for use in this assessment.  "),"<a href=\"moddataset.php?id=" . Sanitize::onlyInt($_GET['id']) . "&cid=$cid&aid=".Sanitize::onlyInt($_GET['aid'])."&template=true&makelocal=" . Sanitize::onlyInt($_GET['qid']) . "\">","</a>");
 		echo _("This will let you modify the question for this assessment only without affecting the library version being used in other assessments.")."</p>";
 	}
-	if (!$myq) {
+    if (!$myq && !$canedit) {
 		echo "<p class=noticetext>"._("This question is not set to allow you to modify the code.  You can only view the code and make additional library assignments")."</p>";
-	}
+	} else if ($viewonly) {
+		echo "<p class=noticetext>"._("This view will not allow you to modify the code.  You can only view the code and make additional library assignments")."</p>";
+    } 
 ?>
 <form enctype="multipart/form-data" method=post action="<?php echo $formAction; // Sanitized near line 806 ?>">
+<?php
+if ($viewonly) {
+    echo '<input type=hidden name=viewonly value=1 />';
+}
+?>
 <input type="hidden" name="hasimg" value="<?php echo Sanitize::encodeStringForDisplay($line['hasimg']);?>"/>
 <p>
 Description:<BR>
-<textarea cols=60 rows=4 name=description <?php if (!$myq) echo "disabled";?>><?php echo Sanitize::encodeStringForDisplay($line['description'], true);?></textarea>
+<textarea cols=60 rows=4 name=description <?php if (!$canedit) echo "disabled";?>><?php echo Sanitize::encodeStringForDisplay($line['description'], true);?></textarea>
 </p>
 <p>
 Author: <?php echo Sanitize::encodeStringForDisplay($line['author']); ?> <input type="hidden" name="author" value="<?php echo Sanitize::encodeStringForDisplay($author); ?>">
@@ -1165,7 +1228,7 @@ function decboxsize(box) {
 <?php echo _('My library assignments:'); ?> <span id="libnames"><?php echo Sanitize::encodeStringForDisplay($lnames);?></span><input type=hidden name="libs" id="libs" size="10" value="<?php echo Sanitize::encodeStringForDisplay($inlibs);?>">
 <button type="button" onClick="libselect()"><?php echo _("Select Libraries"); ?></button>
 <?php
-if (isset($_GET['id']) && $myq) {
+if (isset($_GET['id']) && $canedit) {
 	echo '<span id=libonlysubmit style="display:none"><input type=submit name=justupdatelibs value="Save Library Change Only"/></span>';
 } 
 if ($olnames !== '') {
@@ -1173,32 +1236,78 @@ if ($olnames !== '') {
 }
 ?>
 </p>
-<p>
-<?php echo _('Question type:'); ?> <select name=qtype <?php if (!$myq) echo "disabled=\"disabled\"";?>>
-	<option value="number" <?php if ($line['qtype']=="number") {echo "SELECTED";} ?>>Number</option>
-	<option value="calculated" <?php if ($line['qtype']=="calculated") {echo "SELECTED";} ?>>Calculated Number</option>
-	<option value="choices" <?php if ($line['qtype']=="choices") {echo "SELECTED";} ?>>Multiple-Choice</option>
-	<option value="multans" <?php if ($line['qtype']=="multans") {echo "SELECTED";} ?>>Multiple-Answer</option>
-	<option value="matching" <?php if ($line['qtype']=="matching") {echo "SELECTED";} ?>>Matching</option>
-	<option value="numfunc" <?php if ($line['qtype']=="numfunc") {echo "SELECTED";} ?>>Function</option>
-	<option value="string" <?php if ($line['qtype']=="string") {echo "SELECTED";} ?>>String</option>
-	<option value="essay" <?php if ($line['qtype']=="essay") {echo "SELECTED";} ?>>Essay</option>
-	<option value="draw" <?php if ($line['qtype']=="draw") {echo "SELECTED";} ?>>Drawing</option>
-	<option value="ntuple" <?php if ($line['qtype']=="ntuple") {echo "SELECTED";} ?>>N-Tuple</option>
-	<option value="calcntuple" <?php if ($line['qtype']=="calcntuple") {echo "SELECTED";} ?>>Calculated N-Tuple</option>
-	<option value="matrix" <?php if ($line['qtype']=="matrix") {echo "SELECTED";} ?>>Numerical Matrix</option>
-	<option value="calcmatrix" <?php if ($line['qtype']=="calcmatrix") {echo "SELECTED";} ?>>Calculated Matrix</option>
-	<option value="interval" <?php if ($line['qtype']=="interval") {echo "SELECTED";} ?>>Interval</option>
-	<option value="calcinterval" <?php if ($line['qtype']=="calcinterval") {echo "SELECTED";} ?>>Calculated Interval</option>
-	<option value="complex" <?php if ($line['qtype']=="complex") {echo "SELECTED";} ?>>Complex</option>
-	<option value="calccomplex" <?php if ($line['qtype']=="calccomplex") {echo "SELECTED";} ?>>Calculated Complex</option>
-	<option value="chemeqn" <?php if ($line['qtype']=="chemeqn") {echo "SELECTED";} ?>>Chemical Equation</option>
-	<option value="file" <?php if ($line['qtype']=="file") {echo "SELECTED";} ?>>File Upload</option>
-	<option value="multipart" <?php if ($line['qtype']=="multipart") {echo "SELECTED";} ?>>Multipart</option>
-	<option value="conditional" <?php if ($line['qtype']=="conditional") {echo "SELECTED";} ?>>Conditional</option>
-
-</select>
-</p>
+<div class="pdiv">
+<?php echo _('Question type:'); ?> 
+<div style="display:inline-block" class="dropdown" id="qtypedd">
+    <button class="btn btn-default dropdown-toggle" type="button" data-toggle="dropdown">Select Type</button>
+    <ul class="dropdown-menu">
+      <li class="dropdown-submenu">
+        <a href="#">Number</a>
+        <ul class="dropdown-menu">
+          <li><a href="#" data-sn="number" data-ln="Number">Numeric</a></li>
+          <li><a href="#" data-sn="calculated" data-ln="Calculated Number">Calculated</a></li>
+          <li><a href="#" data-sn="complex" data-ln="Complex Number">Complex</a></li>
+          <li><a href="#" data-sn="calccomplex" data-ln="Calculated Complex Number">Calculated Complex</a></li>
+        </ul>
+      </li>
+      <li class="dropdown-submenu">
+        <a href="#">Selecting from Options</a>
+        <ul class="dropdown-menu">
+          <li><a href="#" data-sn="choices">Multiple-choice</a></li>
+          <li><a href="#" data-sn="multans">Multiple-answer</a></li>
+          <li><a href="#" data-sn="matching">Matching</a></li>
+        </ul>
+      </li>
+      <li><a href="#" data-sn="numfunc">Algebraic Expression (Function)</a></li>
+      <li class="dropdown-submenu">
+        <a href="#">Text Entry / Upload</a>
+        <ul class="dropdown-menu">
+          <li><a href="#" data-sn="string">String</a></li>
+          <li><a href="#" data-sn="essay">Essay</a></li>
+          <li><a href="#" data-sn="file">File Upload</a></li>
+         </ul>
+      </li>
+      <li><a href="#" data-sn="draw">Drawing</a></li>
+      <li class="dropdown-submenu">
+        <a href="#">N-Tuple</a>
+        <ul class="dropdown-menu">
+          <li><a href="#" data-sn="ntuple" data-ln="N-Tuple">Numeric</a></li>
+          <li><a href="#" data-sn="calcntuple" data-ln="Calculated N-Tuple">Calculated</a></li>
+          <li><a href="#" data-sn="complexntuple" data-ln="Complex N-Tuple">Complex</a></li>
+          <li><a href="#" data-sn="calccomplexntuple" data-ln="Calculated Complex N-Tuple">Calculated Complex</a></li>
+          <li><a href="#" data-sn="algntuple" data-ln="Algebraic N-Tuple">Algebraic</a></li>
+        </ul>
+      </li>
+      <li class="dropdown-submenu">
+        <a href="#">Matrix</a>
+        <ul class="dropdown-menu">
+          <li><a href="#" data-sn="matrix" data-ln="Matrix">Numeric</a></li>
+          <li><a href="#" data-sn="calcmatrix" data-ln="Calculated Matrix">Calculated</a></li>
+          <li><a href="#" data-sn="complexmatrix" data-ln="Complex Matrix">Complex</a></li>
+          <li><a href="#" data-sn="calccomplexmatrix" data-ln="Calculated Complex Matrix">Calculated Complex</a></li>
+          <li><a href="#" data-sn="algmatrix" data-ln="Algebraic Matrix">Algebraic</a></li>
+        </ul>
+      </li>
+      <li class="dropdown-submenu">
+        <a href="#">Interval</a>
+        <ul class="dropdown-menu">
+          <li><a href="#" data-sn="interval" data-ln="Interval">Numeric</a></li>
+          <li><a href="#" data-sn="calcinterval" data-ln="Calculated Interval">Calculated</a></li>
+        </ul>
+      </li>
+      <li class="dropdown-submenu">
+        <a href="#">Chemical</a>
+        <ul class="dropdown-menu">
+          <li><a href="#" data-sn="chemeqn" data-ln="Chemical Equation">Equation</a></li>
+          <li><a href="#" data-sn="molecule" data-ln="Chemical Molecule">Molecule</a></li>
+        </ul>
+      </li>
+      <li><a href="#" data-sn="multipart">Multipart</a></li>
+      <li><a href="#" data-sn="conditional">Conditional</a></li>
+    </ul>
+</div>
+<input type=hidden name=qtype id=qtype value="<?php echo Sanitize::encodeStringForDisplay($line['qtype']);?>" />
+</div>
 <p>
 <a href="#" onclick="window.open('<?php echo $imasroot;?>/help.php?section=writingquestions','Help','width='+(.35*screen.width)+',height='+(.7*screen.height)+',scrollbars=1,resizable=1,status=1,top=20,left='+(screen.width*.6));return false;"><?php echo _('Writing Questions Help'); ?></a> |
 <a href="#" onclick="window.open('<?php echo $imasroot;?>/assessment/libs/libhelp.php','Help','width='+(.35*screen.width)+',height='+(.7*screen.height)+',scrollbars=1,resizable=1,status=1,top=20,left='+(screen.width*.6));return false;"><?php echo _('Macro Library Help'); ?></a>
@@ -1214,7 +1323,7 @@ if ($olnames !== '') {
 <button type="button" class="quickSaveButton" onclick="quickSaveQuestion()"><?php echo _('Quick Save and Preview'); ?></button>
 <span class="noticetext quickSaveNotice"></span>
 <BR>
-<textarea style="width: 100%" cols=60 rows=<?php echo min(35,max(20,substr_count($line['control'],"\n")+3));?> id=control name=control <?php if (!$myq) echo _("disabled");?>><?php echo Sanitize::encodeStringForDisplay($line['control'], true);?></textarea>
+<textarea style="width: 100%" cols=60 rows=<?php echo min(35,max(20,substr_count($line['control'],"\n")+3));?> id=control name=control <?php if (!$canedit) echo _("disabled");?>><?php echo Sanitize::encodeStringForDisplay($line['control'], true);?></textarea>
 </div>
 
 
@@ -1226,7 +1335,7 @@ if ($olnames !== '') {
 <button type="button" class="quickSaveButton" onclick="quickSaveQuestion()"><?php echo _('Quick Save and Preview'); ?></button>
 <span class="noticetext quickSaveNotice"></span>
 <BR>
-<textarea style="width: 100%" cols=60 rows=<?php echo min(35,max(10,substr_count($line['qtext'],"\n")+3));?> id="qtext" name="qtext" <?php if (!$myq) echo "readonly=\"readonly\"";?>><?php echo Sanitize::encodeStringForDisplay($line['qtext'], true);?></textarea>
+<textarea style="width: 100%" cols=60 rows=<?php echo min(35,max(10,substr_count($line['qtext'],"\n")+3));?> id="qtext" name="qtext" <?php if (!$canedit) echo "readonly=\"readonly\"";?>><?php echo Sanitize::encodeStringForDisplay($line['qtext'], true);?></textarea>
 </div>
 
 <?php
@@ -1254,13 +1363,13 @@ if ($line['solution']=='') {
 <?php echo _('Use this as a "written example" help button'); ?><br/>
 <input type="checkbox" name="usewithans" value="4" <?php if (($line['solutionopts']&4)==4) {echo 'checked="checked"';};?>>
 <?php echo _('Display with the "Show Answer"'); ?><br/>
-<textarea style="width: 100%" cols=60 rows=<?php echo min(35,max(10,substr_count($line['solution'],"\n")+1));?> id="solution" name="solution" <?php if (!$myq) echo "readonly=\"readonly\"";?>><?php echo Sanitize::encodeStringForDisplay($line['solution'], true);?></textarea>
+<textarea style="width: 100%" cols=60 rows=<?php echo min(35,max(10,substr_count($line['solution'],"\n")+1));?> id="solution" name="solution" <?php if (!$canedit) echo "readonly=\"readonly\"";?>><?php echo Sanitize::encodeStringForDisplay($line['solution'], true);?></textarea>
 </div>
 <div id=imgbox>
 <input type="hidden" name="MAX_FILE_SIZE" value="500000" />
-<?php echo _('Image file:'); ?> <input type="file" name="imgfile" <?php if (!$myq) {echo 'disabled';};?>/>
-  <?php echo _('assign to variable:'); ?> <input type="text" name="newimgvar" size="6" <?php if (!$myq) {echo 'disabled';};?>/>
-  <?php echo _('Description:'); ?> <input type="text" size="20" name="newimgalt" value="" <?php if (!$myq) {echo 'disabled';};?>/><br/>
+<?php echo _('Image file:'); ?> <input type="file" name="imgfile" <?php if (!$canedit) {echo 'disabled';};?>/>
+  <?php echo _('assign to variable:'); ?> <input type="text" name="newimgvar" size="6" <?php if (!$canedit) {echo 'disabled';};?>/>
+  <?php echo _('Description:'); ?> <input type="text" size="20" name="newimgalt" value="" <?php if (!$canedit) {echo 'disabled';};?>/><br/>
 <div id="imgListContainer" style="display:<?php echo (isset($images['vars']) && count($images['vars'])>0) ? 'block' : 'none'; ?>">
 	<?php echo _('Images:'); ?>
 	<ul id='imgList'>
@@ -1275,20 +1384,20 @@ if (isset($images['vars']) && count($images['vars'])>0) {
 			$urlimg = "$imasroot/assessment/qimages/{$images['files'][$id]}";
 		}
 		echo "<li>";
-		echo _("Variable:")." <input type=\"text\" name=\"imgvar-$id\" value=\"\$".Sanitize::encodeStringForDisplay($var)."\" size=\"10\" ".($myq?'':'disabled')."/> <a href=\"".Sanitize::url($urlimg)."\" target=\"_blank\">View</a> ";
-		echo _("Description:")." <input type=\"text\" size=\"20\" name=\"imgalt-$id\" value=\"".Sanitize::encodeStringForDisplay($images['alttext'][$id])."\" ".($myq?'':'disabled')."/> Delete? <input type=checkbox name=\"delimg-$id\" ".($myq?'':'disabled')."/>";
+		echo _("Variable:")." <input type=\"text\" name=\"imgvar-$id\" value=\"\$".Sanitize::encodeStringForDisplay($var)."\" size=\"10\" ".($canedit?'':'disabled')."/> <a href=\"".Sanitize::url($urlimg)."\" target=\"_blank\">View</a> ";
+		echo _("Description:")." <input type=\"text\" size=\"20\" name=\"imgalt-$id\" value=\"".Sanitize::encodeStringForDisplay($images['alttext'][$id])."\" ".($canedit?'':'disabled')."/> Delete? <input type=checkbox name=\"delimg-$id\" ".($canedit?'':'disabled')."/>";
 		echo "</li>";
 	}
 }
 ?>
 	</ul>
 </div>
-<?php echo _('Help button: Type:'); ?> <select name="helptype" <?php if (!$myq) {echo 'disabled';};?>>
+<?php echo _('Help button: Type:'); ?> <select name="helptype" <?php if (!$canedit) {echo 'disabled';};?>>
  <option value="video"><?php echo _('Video'); ?></option>
  <option value="read"><?php echo _('Read'); ?></option>
  </select>
- <?php echo _('URL')?>: <input type="text" name="helpurl" size="30" <?php if (!$myq) {echo 'disabled';};?>/>
- <?php echo _('Description')?>: <input type="text" name="helpdescr" size="30" <?php if (!$myq) {echo 'disabled';};?>/>
+ <?php echo _('URL')?>: <input type="text" name="helpurl" size="30" <?php if (!$canedit) {echo 'disabled';};?>/>
+ <?php echo _('Description')?>: <input type="text" name="helpdescr" size="30" <?php if (!$canedit) {echo 'disabled';};?>/>
  <br/>
 <?php
 echo '<div id="helpbtnwrap" ';
@@ -1308,7 +1417,7 @@ if (count($extref)>0) {
     if (!empty($extrefpt[3])) {
         echo _('Description') . ': ' . Sanitize::encodeStringForDisplay($extrefpt[3]) . '. ';
     }
-    echo ' <label>'._('Delete?')." <input type=\"checkbox\" name=\"delhelp-$i\" ".($myq?'':'disabled')."/></label></li>";
+    echo ' <label>'._('Delete?')." <input type=\"checkbox\" name=\"delhelp-$i\" ".($canedit?'':'disabled')."/></label></li>";
 	}
 }
 echo '</ul></div>'; //helpbtnlist, helpbtnwrap
@@ -1432,7 +1541,10 @@ if (FormData){ // Only allow quicksave if FormData object exists
 				// Empty notices
 				$(".quickSaveNotice").empty();
 				// Load preview page
-				var previewpop = window.open(quickSaveQuestion.testAddr, 'Testing', 'width='+(.4*screen.width)+',height='+(.8*screen.height)+',scrollbars=1,resizable=1,status=1,top=20,left='+(.6*screen.width-20));
+				let leftpos = screen.left ?? screen.availLeft ?? 0;
+    			let toppos = screen.top ?? screen.availTop ?? 0;
+
+				var previewpop = window.open(quickSaveQuestion.testAddr, 'Testing', 'width='+(.4*screen.width)+',height='+(.8*screen.height)+',scrollbars=1,resizable=1,status=1,top='+(20+toppos)+',left='+(.6*screen.width-20+leftpos));
 				previewpop.focus();
 			},
 			error: function(res){
@@ -1527,5 +1639,5 @@ $placeinfooter='
 ?>
 
 <?php
-	require("../footer.php");
+	require_once "../footer.php";
 ?>

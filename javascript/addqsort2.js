@@ -858,7 +858,8 @@ function updatePts() {
             $(this).val($(this).attr("data-lastval"));
         });
     } else {
-        var newdefpts = Math.round($("#defpts").val());
+        var newdefpts = Math.ceil($("#defpts").val());
+        $("#defpts").val(newdefpts);
         var olddefpts = $("#defpts").attr("data-lastval");
         if (newdefpts == "" || newdefpts <= 0) {
             newdefpts = olddefpts;
@@ -1118,7 +1119,7 @@ function generateTable() {
         html +=
             "<br/><span class=small>" +
             _("Default") +
-            ': <input id="defpts" size=2 value="' +
+            ': <input id="defpts" type=number min=0 step=1 size=2 value="' +
             defpoints +
             '" data-lastval="' +
             defpoints +
@@ -1201,7 +1202,13 @@ function generateTable() {
                             html += "ea";
                         }
                         html += (curitems[0][9] > 0 ? ECmark : '');
-                        html += "</td><td></td>";
+                        html +=
+                            '</td><td class=c><div class="dropdown"><button tabindex=0 class="dropdown-toggle plain" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">';
+                        html += '⋮</button><ul role="menu" class="dropdown-menu dropdown-menu-right">';
+                        html += '<li><a href="#" onclick="return togglegroupEC(' + i + ');">' +
+                            _("Toggle Extra Credit") +
+                            "</a></li>";
+                        html += '</ul></div></td>';
                         html += "</tr><tr class=" + curclass + ">";
                     }
                     html += "<td>&nbsp;Q" + (curqnum + 1) + "-" + (j + 1);
@@ -1295,7 +1302,7 @@ function generateTable() {
                         html += ">" + _("With") + "</option></select>" + _(" replacement");
                         html += "</td>";
                         html +=
-                            '<td class="nowrap c"><input size=2 id="grppts-' +
+                            '<td class="nowrap c"><input size=2 type=number min=0 step=1 id="grppts-' +
                             i +
                             '" value="' +
                             curgrppoints +
@@ -1325,7 +1332,7 @@ function generateTable() {
                             '<li><a href="#" onclick="return togglegroupEC(' + i + ');">' +
                             _("Toggle Extra Credit") +
                             "</a></li>";
-                        html += '</ul></div></tr>';
+                        html += '</ul></div></td></tr>';
 
                         if (itemarray[i][3] == 0) {
                             //collapsed group
@@ -1629,7 +1636,7 @@ function generateTable() {
                             "</td>";
                     } else {
                         html +=
-                            '<td><input size=2 id="pts-' +
+                            '<td><input size=2 type=number min=0 step=1 id="pts-' +
                             i +
                             '" value="' +
                             curpt +
@@ -1659,6 +1666,18 @@ function generateTable() {
                     _("Change Settings") +
                     "</a></li>";
                 if (curitems[j][5] == 1) {
+                    html +=
+                        '<li><a href="moddataset.php?id=' +
+                        curitems[j][1] +
+                        "&qid=" +
+                        curitems[j][0] +
+                        "&aid=" +
+                        curaid +
+                        "&cid=" +
+                        curcid +
+                        '&from=addq2&viewonly=1">' +
+                        _("View Code") +
+                        "</a></li>"; //edit
                     html +=
                         '<li><a href="moddataset.php?id=' +
                         curitems[j][1] +
@@ -1903,6 +1922,8 @@ function submitChanges() {
         outdata["pts"] = JSON.stringify(data[2]);
         outdata["extracredit"] = JSON.stringify(data[3]);
         outdata["defpts"] = $("#defpts").val();
+    } else {
+        outdata["extracredit"] = JSON.stringify(data[3]);
     }
     $.ajax({
         type: "POST",

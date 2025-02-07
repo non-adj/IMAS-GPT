@@ -7,9 +7,9 @@
 ini_set("max_execution_time", "600");
 
 /*** master php includes *******/
-require("../init.php");
-require("../includes/copyiteminc.php");
-require("../includes/htmlutil.php");
+require_once "../init.php";
+require_once "../includes/copyiteminc.php";
+require_once "../includes/htmlutil.php";
 
 /*** pre-html data manipulation, including function code *******/
 
@@ -233,6 +233,9 @@ if (!(isset($teacherid))) {
 					$stm->execute(array(':id'=>$cid));
 					$row = $stm->fetch(PDO::FETCH_NUM);
 					$outcomesarr = unserialize($row[0]);
+					if (!is_array($outcomesarr)) {
+						$outcomesarr = array();
+					}
 					foreach ($newoutcomes as $o) {
 						$outcomesarr[] = $o;
 					}
@@ -289,6 +292,10 @@ if (!(isset($teacherid))) {
 			}
 
 			if (isset($_POST['checked']) || $_POST['whattocopy']=='all') {
+                if ($ctc != $cid) {
+                    prepopulate_forumtrack($ctc,$cid);
+                }
+
 				$checked = $_POST['checked'] ?? [];
 				$stm = $DBH->prepare("SELECT blockcnt,dates_by_lti FROM imas_courses WHERE id=:id");
 				$stm->execute(array(':id'=>$cid));
@@ -361,7 +368,7 @@ if (!(isset($teacherid))) {
 				copyrubrics($offlinerubrics);
 			}
 			if (isset($_POST['copystudata']) && ($myrights==100 || ($myspecialrights&32)==32 || ($myspecialrights&64)==64)) {
-				require("../util/copystudata.php");
+				require_once "../util/copystudata.php";
 				copyStuData($cid, $_POST['ctc']);
 			}
 			$DBH->commit();
@@ -407,7 +414,7 @@ if (!(isset($teacherid))) {
 			$names = array();
 			$sums = array();
 			$parents = array();
-			require_once("../includes/loaditemshowdata.php");
+			require_once "../includes/loaditemshowdata.php";
 			$itemshowdata = loadItemShowData($items,false,true,false,false,false,true);
 			getsubinfo($items,'0','',false,' ');
 
@@ -435,7 +442,7 @@ if (!isset($_GET['loadothers']) && !isset($_GET['loadothergroup'])) {
 $placeinhead = "<script type=\"text/javascript\" src=\"$staticroot/javascript/libtree.js\"></script>\n";
 $placeinhead .= "<style type=\"text/css\">\n<!--\n@import url(\"$staticroot/course/libtree.css\");\n-->\n</style>\n";
 $placeinhead .= '<script src="'.$staticroot.'/javascript/copyitemslist.js" type="text/javascript"></script>';
-require("../header.php");
+require_once "../header.php";
 }
 if ($overwriteBody==1) {
 	echo $body;
@@ -456,6 +463,7 @@ if ($overwriteBody==1) {
 	Check: <a href="#" onclick="return chkAllNone('qform','checked[]',true)">All</a> <a href="#" onclick="return chkAllNone('qform','checked[]',false)">None</a>
 
 	<table cellpadding=5 class=gb>
+    <caption class="sr-only">Calendar Items</caption>
 		<thead>
 		<tr><th></th><th>Date</th><th>Tag</th><th>Text</th></tr>
 		</thead>
@@ -534,6 +542,7 @@ $excludeAssess = ($sourceUIver > $destUIver);
 	<p><?php echo _('Check'); ?>: <a href="#" onclick="return chkAllNone('qform','checked[]',true)"><?php echo _('All'); ?></a> <a href="#" onclick="return chkAllNone('qform','checked[]',false)"><?php echo _('None'); ?></a></p>
 
 	<table cellpadding=5 class=gb>
+    <caption class="sr-only">Course Items</caption>
 		<thead>
 		<?php
 			echo '<tr><th></th><th>'._('Title').'</th><th>'._('Summary').'</th></tr>';
@@ -590,7 +599,7 @@ $excludeAssess = ($sourceUIver > $destUIver);
 	<p> </p>
 <div id="copyoptions" style="display:none;">
 	<fieldset><legend><?php echo _('Options'); ?></legend>
-	<table>
+	<table role="presentation">
 	<tbody>
 	<tr class="allon"><td class="r"><?php echo _('Copy course settings?'); ?></td><td><input type=checkbox name="copycourseopt"  value="1"/></td></tr>
 	<tr class="allon"><td class="r"><?php echo sprintf(_('Copy gradebook scheme and categories %s (%s will overwrite current scheme %s)?'),'<br/>','<i>','</i>'); ?> </td><td>
@@ -657,7 +666,7 @@ writeHtmlSelect ("addto",$page_blockSelect['val'],$page_blockSelect['label'],$se
 		echo '<p>'._('Course List').'</p>';
 	}
 	//this displays the actual course list
-	require("../includes/coursecopylist.php");
+	require_once "../includes/coursecopylist.php";
 
 	writeEkeyField()
 ?>
@@ -668,6 +677,6 @@ writeHtmlSelect ("addto",$page_blockSelect['val'],$page_blockSelect['label'],$se
 <?php
 	}
 }
-require ("../footer.php");
+require_once "../footer.php";
 
 ?>

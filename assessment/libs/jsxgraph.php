@@ -32,6 +32,7 @@ $allowedmacros[] = "jsxPolar";
 $allowedmacros[] = "jsxText";
 $allowedmacros[] = "jsxCircle";
 $allowedmacros[] = "jsxLine";
+$allowedmacros[] = "jsxImage";
 $allowedmacros[] = "jsxSegment";
 $allowedmacros[] = "jsxRay";
 $allowedmacros[] = "jsxVector";
@@ -48,7 +49,10 @@ $allowedmacros[] = "jsxUnsuspendUpdate";
 $allowedmacros[] = "jsxSetChild";
 
 function jsx_getlibrarylink() {
-	return "//cdn.jsdelivr.net/npm/jsxgraph@1.5.0/distrib/jsxgraphcore.js";
+	return "https://cdn.jsdelivr.net/npm/jsxgraph@1.9.2/distrib/jsxgraphcore.js";
+}
+function jsx_getcsslink() {
+	return "https://cdn.jsdelivr.net/npm/jsxgraph@1.9.2/distrib/jsxgraph.min.css";
 }
 
 function jsx_idlen() {
@@ -742,6 +746,79 @@ function jsxLine (&$board, $param, $ops=array()) {
 		
 	} else {
 		echo "Eek! Invalid parameters for JSX Line. Start point and end point expected.";
+	}
+}  
+
+###########################################################################
+##
+## Function to draw an image on a JSX board
+##
+###########################################################################
+
+function jsxImage (&$board, $param, $ops=array()) {
+
+	$id = "image_".uniqid();
+	$boardID = jsx_getboardname($board);
+	$inputerror = false;
+
+	// Validate input values
+
+	if (!is_array($param) || count($param) != 3) {
+		$inputerror = true;
+	} else {
+		if (!is_string($param[0]) || !is_jsxpoint($param[1]) || !is_jsxpoint($param[2])) {
+            $inputerror = true;
+        }
+        if (substr($param[0],0,4) === '<img') {
+            $param[0] = preg_replace('/^.*src="(.*?)".*$/', '$1', $param[0]);
+        }
+        if (substr($param[0],0,4) !== 'http') {
+            $inputerror = true;
+        }
+	}
+
+	if (!$inputerror) {
+
+		// Set default values
+		$highlight = isset($ops['highlight']) ? jsx_getbool($ops['highlight']) : 'false';
+		$fixed = isset($ops['fixed']) ? jsx_getbool($ops['fixed']) : 'true';
+		$haslabel = isset($ops['label']) ? 'true' : 'false';
+		$label = isset($ops['label']) ? $ops['label'] : '';
+        $fontsize = isset($ops['fontsize']) ? $ops['fontsize'] : 16;
+		$fontcolor = isset($ops['fontcolor']) ? $ops['fontcolor'] : 'black';
+		$visible = isset($ops['visible']) ? jsx_getbool($ops['visible']) : 'true';
+
+		// Begin object creation
+
+		$out = "window.{$id} = board_{$boardID}.create('image', ['";
+        $out .= Sanitize::encodeStringForJavascript($param[0])."', ";
+		$out .= jsx_pointToJS($param[1]).", ";
+		$out .= jsx_pointToJS($param[2])."],";
+
+		// Set attributes 
+		
+		$out .= "{
+            highlight: {$highlight},
+            fixed: {$fixed},
+			withLabel: {$haslabel},
+			label: { color:'{$fontcolor}', fontSize: {$fontsize}, highlight: false },
+			visible: {$visible}
+		})";
+		
+		if (isset($ops['attributes'])) { 
+			$out .= ".setAttribute({$ops['attributes']});";
+		} else {
+			$out .= ";";
+		}
+
+		$out .= jsx_setlabel($id, $label);	
+
+		// Append new output string to the board string
+		$board = substr_replace($board, $out, strpos($board, "/*INSERTHERE*/"), 0);
+		return $id;
+		
+	} else {
+		echo "Eek! Invalid parameters for JSX Image. URL, corner point, and dimensions expected.";
 	}
 }  
 
@@ -1616,7 +1693,12 @@ function jsxBoard($type, $ops=array()) {
 function jsx_getscript () {
 	
 	if (isset($GLOBALS['assessUIver']) && $GLOBALS['assessUIver'] > 1) {
-		return '<script type="text/javascript" src="https:'.jsx_getlibrarylink().'"></script>';	
+		return '<script type="text/javascript" src="'.jsx_getlibrarylink().'"></script>' .
+            '<script type="text/javascript">
+            if ($("head").find("link[href*=jsxgraph]").length == 0) {
+                $("<link/>", {rel: "stylesheet", href: "'.jsx_getcsslink().'"}).appendTo("head");
+            }
+            </script>';	
 	} else {
 		return 
 			'<script type="text/javascript">if (typeof JXG === "undefined" && typeof JXGscriptloaded === "undefined") {
@@ -2503,10 +2585,31 @@ function jsx_getcolorinterval($boardID, $box, $obj, $type, $param = array()) {
 	$out = 
 		"var colorInterval{$boardID}_{$box} = setInterval(function() {  
 			if ($('#qn{$box}')[0] || $('#qn{$box}')[0]) {
+				//TODO: Fix this. Needs to consider other answerboxes too.
+				//probably easiest to add ansgrn/ansred class to board, then 
+				//look to see if a class is already set on the board and incorporate that
 				if ($('#qn{$box}, #tc{$box}').is('.ansgrn')) {
-					$('#jxgboard_{$boardID}').css('border', '1px solid #0f0');
-				} else if ($('#qn{$box}, #tc{$box}').is('.ansred') || $('#qn{$box}, #tc{$box}').is('.ansyel')) {
-					$('#jxgboard_{$boardID}').css('border','1px solid #f00');
+					// if already red or yellow, make yellow, else make green
+					if ($('#jxgboard_{$boardID}').is('.ansred,.ansyel,.ansnoans')) {
+						$('#jxgboard_{$boardID}').removeClass('ansred').removeClass('ansnoans').addClass('ansyel');
+					} else {
+					 	$('#jxgboard_{$boardID}').addClass('ansgrn');
+					}
+				} else if ($('#qn{$box}, #tc{$box}').is('.ansred')) {
+					// if already grn or yellow, make yellow, else make red
+					if ($('#jxgboard_{$boardID}').is('.ansgrn,.ansyel')) {
+						$('#jxgboard_{$boardID}').removeClass('ansgrn').addClass('ansyel');
+					} else {
+					 	$('#jxgboard_{$boardID}').addClass('ansred');
+					}
+				} else if ($('#qn{$box}, #tc{$box}').is('.ansyel')) {
+					$('#jxgboard_{$boardID}').removeClass('ansgrn').removeClass('ansred').removeClass('ansnoans').addClass('ansyel');
+				} else {
+					if ($('#jxgboard_{$boardID}').is('.ansgrn,.ansyel')) {
+						$('#jxgboard_{$boardID}').removeClass('ansgrn').addClass('ansyel');
+					} else {
+						$('#jxgboard_{$boardID}').addClass('ansnoans');
+					}
 				}
 				/* Pull in answer from answerbox is possible */
 				if ($('#qn{$box}')[0] && $('#qn{$box}').val() !== '') {

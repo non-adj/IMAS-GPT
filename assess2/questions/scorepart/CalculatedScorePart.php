@@ -2,8 +2,8 @@
 
 namespace IMathAS\assess2\questions\scorepart;
 
-require_once(__DIR__ . '/ScorePart.php');
-require_once(__DIR__ . '/../models/ScorePartResult.php');
+require_once __DIR__ . '/ScorePart.php';
+require_once __DIR__ . '/../models/ScorePartResult.php';
 
 use IMathAS\assess2\questions\models\ScorePartResult;
 use IMathAS\assess2\questions\models\ScoreQuestionParams;
@@ -33,19 +33,31 @@ class CalculatedScorePart implements ScorePart
         $defaultreltol = .0015;
 
         $optionkeys = ['answer', 'reltolerance', 'abstolerance', 'reqsigfigs', 
-            'answerformat', 'requiretimes', 'requiretimeslistpart', 'ansprompt', 
-            'formatfeedbackon'];
+            'requiretimeslistpart', 'ansprompt', 'formatfeedbackon'];
         foreach ($optionkeys as $optionkey) {
             ${$optionkey} = getOptionVal($options, $optionkey, $multi, $partnum);
         }
-        if ($reltolerance === '' && $abstolerance === '') { $reltolerance = $defaultreltol;}
+        $optionkeys = ['partialcredit'];
+        foreach ($optionkeys as $optionkey) {
+            ${$optionkey} = getOptionVal($options, $optionkey, $multi, $partnum, 2);
+        }
+        $optionkeys = ['answerformat','requiretimes'];
+        foreach ($optionkeys as $optionkey) {
+            ${$optionkey} = getOptionVal($options, $optionkey, $multi, $partnum, 1);
+        }
 
+        if ($reltolerance === '' && $abstolerance === '') { $reltolerance = $defaultreltol;}
+        
         if ($multi) { $qn = ($qn+1)*1000+$partnum; }
         $hasNumVal = !empty($_POST["qn$qn-val"]);
 
         $givenans = normalizemathunicode($givenans);
         $answer = normalizemathunicode($answer);
-        $ansformats = array_map('trim',explode(',',$answerformat));
+        if (is_array($answerformat)) {
+            $ansformats = array_map('trim',explode(',',$answerformat[0]));
+        } else {
+            $ansformats = array_map('trim',explode(',',$answerformat));
+        }
 
         if (in_array('nosoln',$ansformats) || in_array('nosolninf',$ansformats)) {
             list($givenans, $answer) = scorenosolninf($qn, $givenans, $answer, $ansprompt);
@@ -74,12 +86,6 @@ class CalculatedScorePart implements ScorePart
             return $scorePartResult;
         }
 
-        $formatok = "all";
-        if (!empty($requiretimes) && checkreqtimes($givenans, $requiretimes)==0) {
-            //return 0;
-            $formatok = "nowhole";
-        }
-
         // rewrite +-
         if (in_array('allowplusminus', $ansformats)) {
             if (!in_array('list', $ansformats)) {
@@ -87,6 +93,15 @@ class CalculatedScorePart implements ScorePart
             }
             $answer = rewritePlusMinus($answer);
             $givenans = rewritePlusMinus($givenans);    
+        }
+
+        $isListAnswer = (in_array('exactlist',$ansformats) || in_array('orderedlist',$ansformats) || in_array('list',$ansformats));
+        $formatok = "all";
+        // check requiretimes on whole now if it's a list. 
+        // if not a list, we'll check it later
+        if ($isListAnswer && !empty($requiretimes) && checkreqtimes($givenans, $requiretimes)==0) {
+            //return 0;
+            $formatok = "nowhole";
         }
 
         if ($reqsigfigs !== '') {
@@ -118,8 +133,9 @@ class CalculatedScorePart implements ScorePart
         }
 
         $ansnorm = array();
+
         //pre-evaluate all instructor expressions - preg match all intervals.  Return array of or options
-        if (in_array('exactlist',$ansformats) || in_array('orderedlist',$ansformats) || in_array('list',$ansformats)) {
+        if ($isListAnswer) {
             $anarr = array_map('trim',explode(',',$answer));
             foreach ($anarr as $k=>$ananswer) {
                 $aarr = explode(' or ',$ananswer);
@@ -131,26 +147,57 @@ class CalculatedScorePart implements ScorePart
                         $scorePartResult->setRawScore(0);
                         return $scorePartResult;
                     }
-                    if (!is_numeric($anans) && $anans!='DNE' && $anans!='oo' && $anans!='+oo' && $anans!='-oo') {
+                    if ((!is_numeric($anans) || $checkSameform) && $anans!='DNE' && $anans!='oo' && $anans!='+oo' && $anans!='-oo') {
                         if ((in_array("mixednumber",$ansformats) || in_array("sloppymixednumber",$ansformats) || in_array("mixednumberorimproper",$ansformats) || in_array("allowmixed",$ansformats)) && preg_match('/^\s*(\-?\s*\d+)\s*(_|\s)\s*(\d+)\s*\/\s*(\d+)\s*$/',$anans,$mnmatches)) {
                             $aarr[$j] = $mnmatches[1] + (($mnmatches[1]<0)?-1:1)*($mnmatches[3]/$mnmatches[4]);
+                            if ($checkSameform) {
+                                $anfunc = parseMathQuiet($anans);
+                                if ($anfunc !== false) {
+                                    $ansnorm[$k][$j] = $anfunc->normalizeTreeString();
+                                }
+                            }
                         } else {
                             $anfunc = parseMathQuiet($anans);
                             if ($anfunc !== false) {
                                 $aarr[$j] = $anfunc->evaluateQuiet();
                                 if ($checkSameform) {
-                                $ansnorm[$k][$j] = $anfunc->normalizeTreeString();
+                                    $ansnorm[$k][$j] = $anfunc->normalizeTreeString();
                                 }
                             } else {
                                 $aarr[$j] = '';
                             }
                         }
-                    }
+                    } 
                 }
                 $anarr[$k] = $aarr;
             }
         } else {
             $aarr = array_map('trim',explode(' or ',$answer));
+            $partialpts = array_fill(0, count($aarr), 1);
+            $origanscnt = count($aarr);
+            if (!empty($partialcredit) && !$isListAnswer) { // partial credit only works for non-list answers
+                if (!is_array($partialcredit)) {$partialcredit = explode(',',$partialcredit);}
+                for ($i=0;$i<count($partialcredit);$i+=2) {
+                    if (!in_array($partialcredit[$i], $aarr) || $partialcredit[$i+1]<1) {
+                        $aarr[] = $partialcredit[$i];
+                        $partialpts[] = $partialcredit[$i+1];
+                    } else {
+                        // ignoring element; need to remove corresponding from requiretimes and answerformat
+                        if (is_array($answerformat)) {
+                            unset($answerformat[1+$i/2]);
+                        }
+                        if (is_array($requiretimes)) {
+                            unset($requiretimes[1+$i/2]);
+                        }
+                    }
+                } 
+                if (is_array($answerformat)) {
+                    $answerformat = array_values($answerformat);
+                }
+                if (is_array($requiretimes)) {
+                    $requiretimes = array_values($requiretimes);
+                }
+            }
             foreach ($aarr as $j=>$anans) {
                 if ($anans=='') {
                     if (isset($GLOBALS['teacherid'])) {
@@ -172,6 +219,12 @@ class CalculatedScorePart implements ScorePart
                 } else if ((!is_numeric($anans) || $checkSameform) && $anans!='DNE' && $anans!='oo' && $anans!='+oo' && $anans!='-oo') {
                     if ((in_array("mixednumber",$ansformats) || in_array("sloppymixednumber",$ansformats) || in_array("mixednumberorimproper",$ansformats) || in_array("allowmixed",$ansformats)) && preg_match('/^\s*(\-?\s*\d+)\s*(_|\s)\s*(\d+)\s*\/\s*(\d+)\s*$/',$anans,$mnmatches)) {
                         $aarr[$j] = $mnmatches[1] + (($mnmatches[1]<0)?-1:1)*($mnmatches[3]/$mnmatches[4]);
+                        if ($checkSameform) {
+                            $anfunc = parseMathQuiet($anans);
+                            if ($anfunc !== false) {
+                                $ansnorm[0][$j] = $anfunc->normalizeTreeString();
+                            }
+                        }
                     } else {
                         $anfunc = parseMathQuiet($anans);
                         if ($anfunc !== false) {
@@ -189,7 +242,7 @@ class CalculatedScorePart implements ScorePart
         }
 
         if (!$hasNumVal) {
-            if (in_array('exactlist',$ansformats) || in_array('orderedlist',$ansformats) || in_array('list',$ansformats)) {
+            if ($isListAnswer) {
                 $gaarr = array_map('trim',explode(',',$givenans));
             } else {
                 $gaarr = array(trim(str_replace(',','', $givenans)));
@@ -248,23 +301,30 @@ class CalculatedScorePart implements ScorePart
                 $lastval = $v;
             }
 
+            $tmp = $anarr;
+            asort($tmp);
+            $anarr = [];
             if (!empty($requiretimeslistpart) && is_array($requiretimeslistpart)) {
-                list($tmp,$tmprtlp) = jointsort($anarr,$requiretimeslistpart);
-            } else {
-                $tmp = $anarr;
-                sort($tmp);
+                $tmprtlp = $requiretimeslistpart;
+                $requiretimeslistpart = [];
             }
-            $anarr = array($tmp[0]);
-            if (!empty($requiretimeslistpart) && is_array($requiretimeslistpart)) {
-                $requiretimeslistpart = array($tmprtlp[0]);
+            if ($checkSameform) {
+                $tmpansnorm = $ansnorm;
+                $ansnorm = [];
             }
-            for ($i=1;$i<count($tmp);$i++) {
-                if (!is_numeric($tmp[$i][0]) || !is_numeric($tmp[$i-1][0]) || count($tmp[$i])>1 || count($tmp[$i-1])>1 || abs($tmp[$i][0]-$tmp[$i-1][0])>1E-12) {
-                    $anarr[] = $tmp[$i];
+
+            $lastkey = -1;
+            foreach ($tmp as $key=>$v) {
+                if ($lastkey == -1 || !is_numeric($tmp[$key][0]) || !is_numeric($tmp[$lastkey][0]) || count($tmp[$key])>1 || count($tmp[$lastkey])>1 || abs($tmp[$key][0]-$tmp[$lastkey][0])>1E-12) {
+                    $anarr[] = $v;
                     if (!empty($requiretimeslistpart) && is_array($requiretimeslistpart)) {
-                        $requiretimeslistpart[] = $tmprtlp[$i];
+                        $requiretimeslistpart[] = $tmprtlp[$key];
+                    }
+                    if ($checkSameform) {
+                        $ansnorm[] = $tmpansnorm[$key];
                     }
                 }
+                $lastkey = $key;
             }
 
         } else {
@@ -306,32 +366,60 @@ class CalculatedScorePart implements ScorePart
                 $gaarr = array($gamasterarr[$i]);
             }
             foreach($gaarr as $j=>$givenans) {
-                $partformatok = true;
                 $numericans = $numvalarr[$j];
-                if (!checkanswerformat($givenans,$ansformats)) {
-                    $formatok = "nopart";  $partformatok = false;
-                    //continue;
-                }
-                if (!empty($requiretimeslistpart) && !is_array($requiretimeslistpart) && checkreqtimes($givenans,$requiretimeslistpart)==0) {
-                    $formatok = "nopart";  $partformatok = false;
-                    //continue;
-                }
+                
                 //removed - done above already
                 //$anss = explode(' or ',$answer);
                 foreach ($anss as $k=>$anans) {
+                    if (is_array($requiretimes)) {
+                        if ($k<$origanscnt) {
+                            $thisreqtimes = $requiretimes[0] ?? '';
+                        } else {
+                            $thisreqtimes = $requiretimes[$k-$origanscnt+1] ?? '';
+                        }
+                    } else {
+                        $thisreqtimes = $requiretimes;
+                    }
+                    if (is_array($answerformat)) {
+                        if ($k<$origanscnt) {
+                            $thisansfmt = explode(',', $answerformat[0] ?? '');
+                        } else {
+                            $thisansfmt = explode(',', $answerformat[$k-$origanscnt+1] ?? '');
+                        }
+                        $thischecksameform = in_array('sameform', $thisansfmt);
+                    } else {
+                        $thisansfmt = $ansformats;
+                        $thischecksameform = $checkSameform;
+                    }
+                    $partformatok = true;
+                    if (!$isListAnswer) {
+                        $formatok = "all";
+                    }
+                    if (!$isListAnswer && !empty($thisreqtimes) && checkreqtimes($givenans, $thisreqtimes)==0) {
+                        //return 0;
+                        $formatok = "nowhole"; $partformatok = false;
+                    }
+                    if (!checkanswerformat($givenans,$thisansfmt)) {
+                        $formatok = "nopart";  $partformatok = false;
+                        //continue;
+                    }
+                    if (!empty($requiretimeslistpart) && !is_array($requiretimeslistpart) && checkreqtimes($givenans,$requiretimeslistpart)==0) {
+                        $formatok = "nopart";  $partformatok = false;
+                        //continue;
+                    }
                     if (!is_numeric($anans)) {
                         if (is_array($anans)) {
                             if (($anans[1]=="(" && $numericans>$anans[2]) || ($anans[1]=="[" && $numericans>=$anans[2])) {
                                 if (($anans[4]==")" && $numericans<$anans[3]) || ($anans[4]=="]" && $numericans<=$anans[3])) {
-                                    if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                                    if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                                 }
                             }
                         } else if ($anans=="DNE" && strtoupper($givenans)=="DNE") {
-                            if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                            if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                         } else if (($anans=="+oo" || $anans=="oo") && ($givenans=="+oo" || $givenans=="oo")) {
-                            if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                            if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                         } else if ($anans=="-oo" && $givenans=="-oo") {
-                            if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                            if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                         }
                     } else if (is_numeric($numericans)) {
                         //echo "{$ganorm[$j]} vs {$ansnorm[$i][$k]}";
@@ -340,10 +428,10 @@ class CalculatedScorePart implements ScorePart
                             if (checksigfigs($tocheck, $anans, $reqsigfigs, $exactsigfig, $reqsigfigoffset, $sigfigscoretype)) {
                                 if (!empty($requiretimeslistpart) && is_array($requiretimeslistpart) && checkreqtimes($givenans,$requiretimeslistpart[$i])==0) {
                                     $formatok = "nopart";  $partformatok = false;
-                                } else if ($checkSameform && $ganorm[$j] != $ansnorm[$i][$k]) {
+                                } else if ($thischecksameform && $ganorm[$j] != $ansnorm[$i][$k]) {
                                     $formatok = "nopart";  $partformatok = false;
                                 }
-                                if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                                if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                             } else if ($exactsigfig && checksigfigs($tocheck, $anans, $reqsigfigs, false, $reqsigfigoffset, $sigfigscoretype)) {
                                 //see if it'd be right aside from exact sigfigs
                                 $formatok = "nopart";  $partformatok = false; $correctanyformat++; $foundloc = $j; break 2;
@@ -352,29 +440,29 @@ class CalculatedScorePart implements ScorePart
                             if (abs($anans-$numericans) < $abstolerance+(($anans==0||abs($anans)>1)?1E-12:(abs($anans)*1E-12))) {
                                 if (!empty($requiretimeslistpart) && is_array($requiretimeslistpart) && checkreqtimes($givenans,$requiretimeslistpart[$i])==0) {
                                     $formatok = "nopart";  $partformatok = false;
-                                } else if ($checkSameform && $ganorm[$j] != $ansnorm[$i][$k]) {
+                                } else if ($thischecksameform && $ganorm[$j] != $ansnorm[$i][$k]) {
                                     $formatok = "nopart";  $partformatok = false;
                                 }
-                                if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                                if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                             }
                         } else {
                             if ($anans==0) {
                                 if (abs($anans - $numericans) < $reltolerance/1000 + 1E-12) {
                                     if (!empty($requiretimeslistpart) && is_array($requiretimeslistpart) && checkreqtimes($givenans,$requiretimeslistpart[$i])==0) {
                                         $formatok = "nopart";  $partformatok = false;
-                                    } else if ($checkSameform && $ganorm[$j] != $ansnorm[$i][$k]) {
+                                    } else if ($thischecksameform && $ganorm[$j] != $ansnorm[$i][$k]) {
                                         $formatok = "nopart";  $partformatok = false;
                                     }
-                                    if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                                    if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                                 }
                             } else {
                                 if (abs($anans - $numericans)/(abs($anans)+(abs($anans)>1?1E-12:(abs($anans)*1E-12))) < $reltolerance+1E-12) {
                                     if (!empty($requiretimeslistpart) && is_array($requiretimeslistpart) && checkreqtimes($givenans,$requiretimeslistpart[$i])==0) {
                                         $formatok = "nopart";  $partformatok = false;
-                                    } else if ($checkSameform && $ganorm[$j] != $ansnorm[$i][$k]) {
+                                    } else if ($thischecksameform && $ganorm[$j] != $ansnorm[$i][$k]) {
                                         $formatok = "nopart";  $partformatok = false;
                                     }
-                                    if ($partformatok) {$correct += 1;}; $correctanyformat++; $foundloc = $j; break 2;
+                                    if ($partformatok) {$correct += $partialpts[$k] ?? 1;}; $correctanyformat++; $foundloc = $j; break 2;
                                 }
                             }
                         }
@@ -383,7 +471,7 @@ class CalculatedScorePart implements ScorePart
             }
             if ($foundloc>-1) {
                 array_splice($gaarr,$foundloc,1); //remove from list
-                if ($checkSameform) {
+                if ($thischecksameform) {
                   array_splice($ganorm,$foundloc,1);
                 }
                 array_splice($numvalarr,$foundloc,1);

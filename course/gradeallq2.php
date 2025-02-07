@@ -7,16 +7,16 @@
 
 // TODO: rework one-stu-at-a-time to use userid as selector
 
-	require("../init.php");
-	require("../assess2/AssessInfo.php");
-	require("../assess2/AssessRecord.php");
+	require_once "../init.php";
+	require_once "../assess2/AssessInfo.php";
+	require_once "../assess2/AssessRecord.php";
 
 	$isteacher = isset($teacherid);
 	$istutor = isset($tutorid);
 	if (!$isteacher && !$istutor) {
-		require("../header.php");
+		require_once "../header.php";
 		echo "You need to log in as a teacher or tutor to access this page";
-		require("../footer.php");
+		require_once "../footer.php";
 		exit;
 	}
 
@@ -69,9 +69,9 @@
 		exit;
 	}
 	if ($istutor && $tutoredit==2) {
-		require("../header.php");
+		require_once "../header.php";
 		echo "You not have access to view scores for this assessment";
-		require("../footer.php");
+		require_once "../footer.php";
 		exit;
 	} else if ($isteacher || ($istutor && ($tutoredit&1)==1)) {
 		$canedit = 1;
@@ -239,7 +239,7 @@
 				// is added, this is removed:  count($adjustedScores) > 0 &&
 				if (strlen($line['lti_sourcedid'])>1) {
 					//update LTI score
-					require_once("../includes/ltioutcomes.php");
+					require_once "../includes/ltioutcomes.php";
 					$gbscore = $assess_record->getGbScore();
 					calcandupdateLTIgrade($line['lti_sourcedid'],$aid,$line['userid'],$gbscore['gbscore'],true, -1, false);
 				}
@@ -284,7 +284,7 @@
 		exit;
 	}
 
-	require("../includes/htmlutil.php");
+	require_once "../includes/htmlutil.php";
 
 	if ($isgroup>0) {
 		$groupnames = array();
@@ -316,6 +316,7 @@
     $points = $assess_info->getQuestionSetting($qid, 'points_possible');
     $rubric = $assess_info->getQuestionSetting($qid, 'rubric');
     $qsetid = $assess_info->getQuestionSetting($qid, 'questionsetid');
+	$interquestion_text = $assess_info->getSetting('interquestion_text');
 /*
 	$query = "SELECT imas_questions.points,imas_questions.rubric,imas_questionset.* FROM imas_questions,imas_questionset ";
 	$query .= "WHERE imas_questions.questionsetid=imas_questionset.id AND imas_questions.id=:id";
@@ -332,7 +333,6 @@
 		$points = $defpoints;
 	}
 */
-	$lastupdate = '030222';
 	function formatTry($try,$cnt,$pn,$tn) {
 		if (is_array($try) && $try[0] === 'draw') {
 			$id = $cnt.'-'.$pn.'-'.$tn;
@@ -360,23 +360,22 @@
 
 	$useeditor='review';
 	$placeinhead = '<script type="text/javascript" src="'.$staticroot.'/javascript/rubric_min.js?v=022223"></script>';
-	$placeinhead .= '<script type="text/javascript" src="'.$staticroot.'/javascript/gb-scoretools.js?v=020223"></script>';
-	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/assess2/vue/css/index.css?v='.$lastupdate.'" />';
-	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/assess2/vue/css/gbviewassess.css?v='.$lastupdate.'" />';
-	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/assess2/vue/css/chunk-common.css?v='.$lastupdate.'" />';
-	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/assess2/print.css?v='.$lastupdate.'" media="print">';
+	$placeinhead .= '<script type="text/javascript" src="'.$staticroot.'/javascript/gb-scoretools.js?v=060724"></script>';
+	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/assess2/vue/css/index.css?v='.$lastvueupdate.'" />';
+	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/assess2/vue/css/gbviewassess.css?v='.$lastvueupdate.'" />';
+	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/assess2/print.css?v='.$lastvueupdate.'" media="print">';
     if (!empty($CFG['assess2-use-vue-dev'])) {
-        $placeinhead .= '<script src="'.$staticroot.'/mathquill/mathquill.js?v=022720" type="text/javascript"></script>';
+        $placeinhead .= '<script src="'.$staticroot.'/mathquill/mathquill.js?v=112124" type="text/javascript"></script>';
         $placeinhead .= '<script src="'.$staticroot.'/javascript/drawing.js?v=041920" type="text/javascript"></script>';
         $placeinhead .= '<script src="'.$staticroot.'/javascript/AMhelpers2.js?v=052120" type="text/javascript"></script>';
         $placeinhead .= '<script src="'.$staticroot.'/javascript/eqntips.js?v=041920" type="text/javascript"></script>';
-        $placeinhead .= '<script src="'.$staticroot.'/javascript/mathjs.js?v=041920" type="text/javascript"></script>';
+        $placeinhead .= '<script src="'.$staticroot.'/javascript/mathjs.js?v=20230729" type="text/javascript"></script>';
         $placeinhead .= '<script src="'.$staticroot.'/mathquill/AMtoMQ.js?v=052120" type="text/javascript"></script>';
         $placeinhead .= '<script src="'.$staticroot.'/mathquill/mqeditor.js?v=041920" type="text/javascript"></script>';
         $placeinhead .= '<script src="'.$staticroot.'/mathquill/mqedlayout.js?v=041920" type="text/javascript"></script>';
     } else {
-        $placeinhead .= '<script src="'.$staticroot.'/mathquill/mathquill.min.js?v=100220" type="text/javascript"></script>';
-        $placeinhead .= '<script src="'.$staticroot.'/javascript/assess2_min.js?v=021123" type="text/javascript"></script>';
+        $placeinhead .= '<script src="'.$staticroot.'/mathquill/mathquill.min.js?v=112124" type="text/javascript"></script>';
+        $placeinhead .= '<script src="'.$staticroot.'/javascript/assess2_min.js?v='.$lastvueupdate.'" type="text/javascript"></script>';
     }
     
 	$placeinhead .= '<link rel="stylesheet" type="text/css" href="'.$staticroot.'/mathquill/mathquill-basic.css?v=021823">
@@ -409,6 +408,17 @@
 	$(function() {
 		$(".viewworkwrap img").on("click", rotateimg);
 	})
+    var scoretool_page = "aq";
+
+    function updatefiltercookie() {
+        let vals = [];
+        $("#filtersdiv input[type=checkbox]").each(function(i,el) {
+            if (el.checked) {
+                vals.push(el.id);
+            }
+        });
+        document.cookie = "gaqf'.$aid.'=" + vals.join(",");
+    }
 	';
 	$placeinhead .= '</script>';
 	if ($_SESSION['useed']!=0) {
@@ -417,11 +427,12 @@
 	$placeinhead .= '<style type="text/css"> 
         .fixedbottomright {position: fixed; right: 10px; bottom: 10px; z-index:10;}
         .hoverbox { background-color: #fff; z-index: 9; box-shadow: 0px -3px 5px 0px rgb(0 0 0 / 75%);}
+        #filtersdiv label { margin-right: 5px; user-select:none;}
 		</style>';
-	require("../includes/rubric.php");
+	require_once "../includes/rubric.php";
 	$_SESSION['coursetheme'] = $coursetheme;
-	require("../header.php");
-	echo "<style type=\"text/css\">p.tips {	display: none;}\n .hideongradeall { display: none;} .pseudohidden {visibility:hidden;position:absolute;}</style>\n";
+	require_once "../header.php";
+	echo "<style type=\"text/css\">p.tips {	display: none;} .hideongradeall { display: none;} .pseudohidden {visibility:hidden;position:absolute;}</style>\n";
 	echo "<div class=breadcrumb>$breadcrumbbase <a href=\"course.php?cid=".Sanitize::courseId($_GET['cid'])."\">".Sanitize::encodeStringForDisplay($coursename)."</a> ";
 	echo "&gt; <a href=\"gradebook.php?stu=0&cid=$cid\">Gradebook</a> ";
 	echo "&gt; <a href=\"gb-itemanalysis2.php?stu=" . Sanitize::encodeUrlParam($stu) . "&cid=$cid&aid=" . Sanitize::onlyInt($aid) . "\">Item Analysis</a> ";
@@ -469,6 +480,21 @@
 		writeHtmlSelect('secfiltersel', $sections, $sections, $secfilter, _('All'), '-1', 'onchange="chgsecfilter()"');
 	}
 	echo '</div>';
+
+	// convert curqloc to 0-indexed question location in original itemorder
+	$curqlocpieces = explode('-', $curqloc);
+	if (count($curqlocpieces) > 1) {
+		$qlocref = $curqlocpieces[0] + $curqlocpieces[1] - 2;
+	} else {
+		$qlocref = $curqlocpieces[0] - 1;
+	}
+	// look up and display interquestion text for this question, if set
+	foreach ($interquestion_text as $data) {
+		if ($qlocref >= $data['displayBefore'] && $qlocref <= $data['displayUntil']) {
+			echo '<div class="introtext">' . $data['text'] . '</div>';
+		}
+	}
+
 	$query = "SELECT imas_rubrics.id,imas_rubrics.rubrictype,imas_rubrics.rubric FROM imas_rubrics JOIN imas_questions ";
 	$query .= "ON imas_rubrics.id=imas_questions.rubric WHERE imas_questions.id=:id";
 	$stm = $DBH->prepare($query);
@@ -494,11 +520,18 @@
         echo '<p>';
 		//echo ' <button type="button" id="preprint" onclick="preprint()">'._('Prepare for Printing (Slow)').'</button>';
     }
-    echo ' <button type="button" id="showanstoggle" onclick="showallans()">'._('Show All Answers').'</button>';
-    echo ' <button type="button" onclick="showallwork()">'._('Show All Work').'</button>';
-    echo ' <button type="button" onclick="previewallfiles()">'._('Preview All Files').'</button>';
-    echo ' <button type="button" onclick="sidebysidegrading()">'._('Side-by-Side').'</button>';
-    echo ' <button type="button" onclick="toggleScrollingScoreboxes()">'._('Floating Scoreboxes').'</button>';
+    /*
+    echo ' <button type="button" id="showanstoggle" onclick="showallans(this)">'._('Show All Answers').'</button>';
+    echo ' <button type="button" onclick="showallwork(this)">'._('Show All Work').'</button>';
+    echo ' <button type="button" onclick="previewallfiles(this)">'._('Preview All Files').'</button>';
+    echo ' <button type="button" onclick="sidebysidegrading(this)">'._('Side-by-Side').'</button>';
+    echo ' <button type="button" onclick="toggleScrollingScoreboxes(this)">'._('Floating Scoreboxes').'</button>';
+    */
+    echo ' <label><input type="checkbox" onchange="toggleshowallans(this.checked)" id="op-showans"/>'._('Show All Answers').'</label>';
+    echo ' <label><input type="checkbox" onchange="toggleshowallwork(this.checked)" id="op-showwork"/>'._('Show All Work').'</label>';
+    echo ' <label><input type="checkbox" onchange="togglepreviewallfiles(this.checked)" id="op-prevwork"/>'._('Preview All Files').'</label>';
+    echo ' <label><input type="checkbox" onchange="sidebysidegrading(this.checked)" id="op-sbs"/>'._('Side-by-Side').'</label>';
+    echo ' <label><input type="checkbox" onchange="toggleScrollingScoreboxState(this.checked)" id="op-floatsb"/>'._('Floating Scoreboxes').'</label>';
 	echo ' <button type="button" id="clrfeedback" onclick="clearfeedback()">'._('Clear all feedback').'</button>';
 	if ($deffbtext != '') {
 		echo ' <button type="button" id="clrfeedback" onclick="cleardeffeedback()">'._('Clear default feedback').'</button>';
@@ -506,7 +539,8 @@
     echo '</p>';
 	if ($canedit) {
 		echo '<p>All visible questions: <button type=button onclick="allvisfullcred();">'._('Full Credit').'</button> ';
-		echo '<button type=button onclick="allvisnocred();">'._('No Credit').'</button></p>';
+		echo '<button type=button onclick="allmanualfullcred();">'._('Full Credit manually-graded parts').'</button> ';
+        echo '<button type=button onclick="allvisnocred();">'._('No Credit').'</button></p>';
     }
     if ($page==-1) {
         echo '<p>'._('Sort by').': <button type=button onclick="sortByLastChange()">'._('Last Changed').'</button>';
@@ -522,7 +556,7 @@
 		echo '</div>';
 	}
 	echo "<form id=\"mainform\" method=post action=\"gradeallq2.php?stu=" . Sanitize::generateQueryStringFromMap($qsmap) . "&page=" . Sanitize::encodeUrlParam($page) . "&update=true\">\n";
-	if ($isgroup>0) {
+	if ($isgroup>0 && $page == -1) {
 		echo '<p><input type="checkbox" name="onepergroup" value="1" onclick="hidegroupdup(this)" /> Grade one per group</p>';
 	}
 
@@ -550,13 +584,15 @@
 			$stulist[] = $row[0].', '.$row[1];
 		}
 
-		echo '<p>Jump to <select id="stusel" onchange="jumptostu()">';
+		echo '<p>'._('Jump to').' <select id="stusel" onchange="jumptostu()" aria-label="Jump to student">';
 		foreach ($stulist as $i=>$st) {
 			echo '<option value="'.$i.'" ';
 			if ($i==$page) {echo 'selected="selected"';}
 			echo '>'.Sanitize::encodeStringForDisplay($st).'</option>';
 		}
-		echo '</select></p>';
+		echo '</select> ';
+        echo sprintf('Grading %d of %d', $page+1, count($stulist));
+        echo '</p>';
 	}
 
 	$qarr = array(':courseid'=>$cid, ':assessmentid'=>$aid);
@@ -582,7 +618,7 @@
 	$stm->execute($qarr);
 	$cnt = 0;
 	$onepergroup = array();
-	require_once("../includes/filehandler.php");
+	require_once "../includes/filehandler.php";
     echo '<div id="qlistwrap">';
 	if ($stm->rowCount()>0) {
 	while($line=$stm->fetch(PDO::FETCH_ASSOC)) {
@@ -772,10 +808,14 @@
                     echo '<br/>Quick grade: <a href="#" class="fullcredlink" onclick="quickgrade('.$cnt.',0,\'scorebox\','.count($qdata['answeights']).',['.$fullscores.']);return false;">Full credit all parts</a>';
                     if (count($togr)>0) {
                         $togr = implode(',',$togr);
-                        echo ' | <a href="#" onclick="quickgrade('.$cnt.',1,\'scorebox\',['.$togr.'],['.$fullscores.']);return false;">Full credit all manually-graded parts</a>';
+                        echo ' | <a href="#" class="fullcredmanuallink" onclick="quickgrade('.$cnt.',1,\'scorebox\',['.$togr.'],['.$fullscores.']);return false;">Full credit all manually-graded parts</a>';
                     }
                 } else if ($canedit) {
-                    echo '<br/>Quick grade: <a href="#" class="fullcredlink" onclick="quicksetscore(\'scorebox' . $cnt .'\','.Sanitize::onlyInt($qdata['points_possible']).',this);return false;">Full credit</a> <span class=quickfb></span>';
+                    $class = 'fullcredlink';
+                    if (!empty($qdata['parts'][0]['req_manual'])) {
+                        $class .= ' fullcredmanuallink';
+                    }
+                    echo '<br/>Quick grade: <a href="#" class="'.$class.'" onclick="quicksetscore(\'scorebox' . $cnt .'\','.Sanitize::onlyInt($qdata['points_possible']).',this);return false;">Full credit</a> <span class=quickfb></span>';
                 }
 
                 if (!empty($qdata['other_tries'])) {
@@ -883,12 +923,27 @@
 		echo '<input type=hidden name=islaststu value=1 />';
 	}
 	echo "</form>";
-	echo '<p>&nbsp;</p>';
+	echo '<p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>';
 	$placeinfooter = '<div id="ehdd" class="ehdd">
     <span id="ehddtext"></span>
     <span onclick="showeh(curehdd);" style="cursor:pointer;">[more..]</span>
   	</div>
 		<div id="eh" class="eh"></div>';
 	$useeqnhelper = 0;
-	require("../footer.php");
+    echo '<script type="text/javascript">
+    $(function() {
+        let filtercookie = readCookie("gaqf'.$aid.'");
+        if (filtercookie !== null && filtercookie.length > 0) {
+            $("#filtersdiv").show();
+            filtercookie = filtercookie.split(",");
+            for (let i=0; i<filtercookie.length; i++) {
+                if (filtercookie[i].length > 0) {
+                    $("#"+filtercookie[i]).prop("checked",true).trigger("change");
+                }
+            }
+        }
+        $("#filtersdiv input[type=checkbox]").on("change", updatefiltercookie);
+    });
+    </script>'; // must be run at the end, after answerboxes have been inited
+	require_once "../footer.php";
 ?>

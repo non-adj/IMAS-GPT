@@ -6,7 +6,7 @@ require_once __DIR__ . "/migratesettings.php";
 
 //Look to see if a hook file is defined, and include if it is
 if (isset($CFG['hooks']['includes/copyiteminc'])) {
-    require $CFG['hooks']['includes/copyiteminc'];
+    require_once $CFG['hooks']['includes/copyiteminc'];
 }
 
 ini_set("max_execution_time", "900");
@@ -240,7 +240,7 @@ function copyitem($itemid, $gbcats = false, $sethidden = false)
 			istutorial,viddata,reqscore,reqscoreaid,reqscoretype,ancestors,defoutcome,
 			posttoforum,ptsposs,extrefs,submitby,showscores,showans,viewingb,scoresingb,
 			ansingb,defregens,defregenpenalty,ver,keepscore,overtime_grace,overtime_penalty,
-			showwork,autoexcuse
+			showwork,autoexcuse,workcutoff
 			FROM imas_assessments WHERE id=:id";
         $stm = $DBH->prepare($query);
         $stm->execute(array(':id' => $typeid));
@@ -475,7 +475,12 @@ function copyitem($itemid, $gbcats = false, $sethidden = false)
 
 function copysub($items, $parent, &$addtoarr, $gbcats = false, $sethidden = false)
 {
-    global $checked, $blockcnt;
+    global $checked, $blockcnt, $cid, $sourcecid;
+    if (intval($cid) == intval($sourcecid)) {
+        $samecourse = true;
+    } else {
+        $samecourse = false;
+    }
     if (!isset($_POST['append'])) {
         $_POST['append'] = '';
     }
@@ -493,7 +498,8 @@ function copysub($items, $parent, &$addtoarr, $gbcats = false, $sethidden = fals
                 $newblock['colors'] = $item['colors'];
                 $newblock['public'] = $item['public'] ?? 0;
                 $newblock['fixedheight'] = $item['fixedheight'] ?? 0;
-                $newblock['grouplimit'] = $item['grouplimit'] ?? [];
+                $newblock['grouplimit'] = $samecourse ? ($item['grouplimit'] ?? []) : [];
+                $newblock['innav'] = $item['innav'] ?? 0;
                 $newblock['items'] = array();
                 if (count($item['items']) > 0) {
                     copysub($item['items'], $parent . '-' . ($k + 1), $newblock['items'], $gbcats, $sethidden);
@@ -570,14 +576,12 @@ function doaftercopy($sourcecid, &$newitems)
                         $autoexcuse[$k]['cat'] = $outcomes[$v['cat']];
                     } else {
                         $autoexcuse[$k]['cat'] = _('Category') . ' ' . $catcnt;
-                        $cntcnt++;
                     }
                 } else if (substr($v['cat'], 0, 4) == 'AID-') {
                     if (isset($assessnewid[substr($v['cat'], 4)])) {
                         $autoexcuse[$k]['cat'] = 'AID-' . $assessnewid[substr($v['cat'], 4)];
                     } else {
                         $autoexcuse[$k]['cat'] = _('Category') . ' ' . $catcnt;
-                        $cntcnt++;
                     }
                 }
             }
@@ -946,5 +950,18 @@ function copyallcalitems($sourcecid, $destcid)
         $query .= implode(',', $insarr);
         $stm = $DBH->prepare($query);
         $stm->execute($qarr);
+    }
+}
+
+function prepopulate_forumtrack($sourcecid, $destcid)
+{
+    // load forum mapping based on name match, to use for post-to-forum remapping
+    global $DBH, $forumtrack;
+    $query = "SELECT sf.id,df.id FROM imas_forums AS sf JOIN imas_forums AS df ON sf.name=df.name ";
+    $query .= "WHERE sf.courseid=:sourcecid AND df.courseid=:destcid";
+    $stm = $DBH->prepare($query);
+    $stm->execute(array(':sourcecid'=>$sourcecid, ':destcid'=>$destcid));
+    while ($row = $stm->fetch(PDO::FETCH_NUM)) {
+        $forumtrack[$row[0]] = $row[1];
     }
 }

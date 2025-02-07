@@ -21,12 +21,12 @@
 
 
 $no_session_handler = 'json_error';
-require_once("../init.php");
-require_once("./common_start.php");
-require_once("./AssessInfo.php");
-require_once("./AssessRecord.php");
-require_once('./AssessUtils.php');
-require_once("../includes/TeacherAuditLog.php");
+require_once "../init.php";
+require_once "./common_start.php";
+require_once "./AssessInfo.php";
+require_once "./AssessRecord.php";
+require_once './AssessUtils.php';
+require_once "../includes/TeacherAuditLog.php";
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -86,13 +86,17 @@ if ($type == 'all' && $keepver == 0) {
   );
   $stm = $DBH->prepare('DELETE FROM imas_assessment_records WHERE assessmentid=? AND userid=?');
   $stm->execute(array($aid, $uid));
+  // clear any lock
+  $stm = $DBH->prepare("UPDATE imas_students SET lockaid=0 WHERE userid=? AND courseid=? AND lockaid=?");
+  $stm->execute([$uid, $cid, $aid]);
+
   $stm = $DBH->prepare("UPDATE imas_exceptions SET timeext=0 WHERE timeext<>0 AND assessmentid=? AND itemtype='A' AND userid=?");
   $stm->execute(array($aid, $uid));
   $assess_record->clearLPblocks();
   // update LTI grade
   $lti_sourcedid = $assess_record->getLTIsourcedId();
   if (strlen($lti_sourcedid) > 1) {
-    require_once("../includes/ltioutcomes.php");
+    require_once "../includes/ltioutcomes.php";
     updateLTIgrade('delete',$lti_sourcedid,$aid,$uid);
   }
   $assess_record->saveRecordIfNeeded(); //to commit
@@ -109,6 +113,12 @@ if ($type == 'all' && $keepver == 0) {
 }
 // recalculated totals based on removed attempts
 $assess_record->reTotalAssess();
+
+if (($assess_record->getStatus() & 1) == 0) {
+  // does not have unsubmitted; clear any locks
+  $stm = $DBH->prepare("UPDATE imas_students SET lockaid=0 WHERE userid=? AND courseid=? AND lockaid=?");
+  $stm->execute([$uid, $cid, $aid]);
+}
 
 // get gbscore and scored_version
 $assessInfoOut = $assess_record->getGbScore();

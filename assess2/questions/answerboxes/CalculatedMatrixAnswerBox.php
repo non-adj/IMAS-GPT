@@ -42,11 +42,15 @@ class CalculatedMatrixAnswerBox implements AnswerBox
 
         $optionkeys = ['ansprompt', 'answersize', 'answerboxsize', 'hidepreview', 'answerformat',
             'answer', 'reqdecimals', 'displayformat', 'readerlabel'];
+        if ($anstype === 'algmatrix') {
+            array_push($optionkeys, 'domain', 'variables');
+        }
         foreach ($optionkeys as $optionkey) {
             ${$optionkey} = getOptionVal($options, $optionkey, $multi, $partnum);
         }
 
         $ansformats = array_map('trim', explode(',', $answerformat));
+        $dispformats = array_map('trim', explode(',', $displayformat));
 
         if ($multi) {$qn = ($qn + 1) * 1000 + $partnum;}
 
@@ -54,7 +58,12 @@ class CalculatedMatrixAnswerBox implements AnswerBox
             $out .= $ansprompt;
         }
         if (!empty($answersize)) {
-            list($tip, $shorttip) = formathint(_('each element of the matrix'), $ansformats, ($reqdecimals !== '') ? $reqdecimals : null, 'calcmatrix', false, true);
+            if ($anstype === 'algmatrix') {
+                $shorttip = _('Enter an algebraic expression');
+                $tip = _('Enter each element of the matrix as an algebraic expression. Example: 3x^2, x/5, (a+b)/c');
+            } else {
+                list($tip, $shorttip) = formathint(_('each element of the matrix'), $ansformats, ($reqdecimals !== '') ? $reqdecimals : null, $anstype, false, true);
+            }
             //$tip = "Enter each element of the matrix as  number (like 5, -3, 2.2) or as a calculation (like 5/3, 2^3, 5+4)";
 
             if (empty($answerboxsize)) {$answerboxsize = 3;}
@@ -62,18 +71,25 @@ class CalculatedMatrixAnswerBox implements AnswerBox
             if (isset($GLOBALS['capturechoices'])) {
                 $GLOBALS['answersize'][$qn] = $answersize;
             }
-            if ($colorbox == '') {
-                $out .= '<div id="qnwrap' . $qn . '">';
+            if (in_array('inline', $dispformats)) {
+                $style = ' style="display:inline-block;vertical-align:middle"';
             } else {
-                $out .= '<div class="' . $colorbox . '" id="qnwrap' . $qn . '">';
+                $style = '';
+            }
+            if ($colorbox == '') {
+                $out .= '<div id="qnwrap' . $qn . '"' . $style . '>';
+            } else {
+                $out .= '<div class="' . $colorbox . '" id="qnwrap' . $qn . '"' . $style . '>';
             }
             $out .= '<table>';
-            if ($displayformat == 'det') {
+            if (in_array('det', $dispformats)) {
                 $out .= '<tr><td class="matrixdetleft">&nbsp;</td><td>';
             } else {
                 $out .= '<tr><td class="matrixleft">&nbsp;</td><td>';
             }
+            
             $arialabel = $this->answerBoxParams->getQuestionIdentifierString() .
+                ' ' . sprintf(_('matrix entry with %d rows and %d columns'), $answersize[0], $answersize[1]) .
                 (!empty($readerlabel) ? ' ' . Sanitize::encodeStringForDisplay($readerlabel) : '');
             $out .= '<table role="group" aria-label="' . $arialabel . '">';
             $count = 0;
@@ -96,8 +112,7 @@ class CalculatedMatrixAnswerBox implements AnswerBox
                     $params['matrixsize'] = $answersize;
 
                     $out .= '<input ' .
-                    'aria-label="' . sprintf(_('Cell %d of %d'), $count + 1, $cellcnt) . '" ' .
-                    Sanitize::generateAttributeString($attributes) .
+                        Sanitize::generateAttributeString($attributes) .
                         '" />';
 
                     $out .= "</td>\n";
@@ -106,7 +121,7 @@ class CalculatedMatrixAnswerBox implements AnswerBox
                 $out .= "</tr>";
             }
             $out .= "</table>\n";
-            if ($displayformat == 'det') {
+            if (in_array('det', $dispformats)) {
                 $out .= '</td><td class="matrixdetright">&nbsp;</td></tr></table>';
             } else {
                 $out .= '</td><td class="matrixright">&nbsp;</td></tr></table>';
@@ -118,8 +133,16 @@ class CalculatedMatrixAnswerBox implements AnswerBox
             } else {
                 $qnref = ($multi - 1) . '-' . ($qn % 1000);
             }
-            $shorttip = _('Enter your answer as a matrix');
-            $tip = $shorttip . _(', like [(2,3,4),(1,4,5)]') . '<br/>' . formathint(_('each element of the matrix'), $ansformats, ($reqdecimals !== '') ? $reqdecimals : null, 'calcmatrix');
+            if ($anstype === 'calccomplexmatrix') {
+                $shorttip = _('Enter a matrix of complex numbers');
+                $tip = $shorttip . _(', like [(2+i,3,i),(2-i,4,5)]') . '<br/>' . formathint(_('each element of the matrix'), $ansformats, ($reqdecimals !== '') ? $reqdecimals : null, $anstype);
+            } else if ($anstype === 'algmatrix') {
+                $shorttip = _('Enter a matrix of algebraic expressions');
+                $tip = $shorttip . _(', like [(x,2,x^2),(1,3x,5)]');
+            } else {
+                $shorttip = _('Enter your answer as a matrix');
+                $tip = $shorttip . _(', like [(2,3,4),(1,4,5)]') . '<br/>' . formathint(_('each element of the matrix'), $ansformats, ($reqdecimals !== '') ? $reqdecimals : null, $anstype);
+            }
             if (empty($answerboxsize)) {$answerboxsize = 20;}
 
             $classes = ['text'];
@@ -149,6 +172,9 @@ class CalculatedMatrixAnswerBox implements AnswerBox
             $preview .= '</button> &nbsp;';
         }
         $preview .= "<span id=p$qn></span> ";
+        if ($anstype === 'algmatrix' && in_array('generalcomplex', $ansformats)) {
+            $tip .= '<br>'._('Your answer can contain complex numbers.');
+        }
         $params['tip'] = $shorttip;
         $params['longtip'] = $tip;
         $params['calcformat'] = $answerformat;
@@ -156,12 +182,30 @@ class CalculatedMatrixAnswerBox implements AnswerBox
             $params['helper'] = 1;
         }
 
+        if ($anstype === 'algmatrix') {
+            if (empty($variables)) {$variables = "x";}
+            $addvars = [];
+            if (in_array('generalcomplex', $ansformats)) {
+                $addvars[] = 'i';
+            }
+            list($variables, $ofunc, $newdomain, $restrictvartoint) = numfuncParseVarsDomain($variables, $domain, $addvars);
+    
+            $params['vars'] = $variables;
+            $params['fvars'] = $ofunc;
+            $params['domain'] = $newdomain;
+        }
+
+        $nosolntype = 0;
         if (in_array('nosoln', $ansformats) || in_array('nosolninf', $ansformats)) {
-            list($out, $answer) = setupnosolninf($qn, $out, $answer, $ansformats, $la, $ansprompt, $colorbox);
+            list($out, $answer,$nosolntype) = setupnosolninf($qn, $out, $answer, $ansformats, $la, $ansprompt, $colorbox);
         }
 
         if ($answer !== '' && !is_array($answer) && !$isConditional) {
-            $sa = '`' . $answer . '`';
+            if ($nosolntype > 0) {
+                $sa = $answer;
+            } else {
+                $sa = '`' . $answer . '`';
+            }
         }
 
         // Done!

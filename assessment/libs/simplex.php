@@ -4,10 +4,10 @@
 // licensed under GPL version 2 or later
 //
 
-include_once("fractions.php");  // fraction routine
+require_once "fractions.php";  // fraction routine
 
 function simplexver() {
-	return 47;
+	return 48;
 }
 
 global $allowedmacros;
@@ -1169,7 +1169,7 @@ function simplexdisplaycolortable() {
                 $pivottextcolor = $currentpoint[3];
 			}
 
-			if(($prow >= 0)&&($prow >= 0)) {
+			if(($prow >= 0)&&($pcol >= 0)) {
                 $pivotstylematrix[$prow][$pcol] = "style='border:1px solid $pivotbordercolor;color:$pivottextcolor'";
 			}
 		}
@@ -1194,7 +1194,7 @@ function simplexdisplaycolortable() {
 
 	// show objective ;
 	if((count($args)>8)&&(!is_null($args[8]))) {
-		$ShowObjective  = verifyshowobjective("simplexdisplaycolortable",$args[8],1,1);
+		$ShowObjective  = verifyshowobjective("simplexdisplaycolortable",$args[8],1);
 	}
 	else {
 		$ShowObjective = 1;
@@ -1431,7 +1431,7 @@ function simplexdisplaylatex() {
 
 	// show objective ;
 	if((count($args)>4)&&(!is_null($args[4]))) {
-		$ShowObjective  = verifyshowobjective("simplexdisplaylatex",$args[4],1,1);
+		$ShowObjective  = verifyshowobjective("simplexdisplaylatex",$args[4],1);
 	}
 	else {
 		$ShowObjective = 1;
@@ -1597,7 +1597,7 @@ function simplexdisplaylatex2() {
 
     // show objective ;
 	if((count($args)>3)&&(!is_null($args[3]))) {
-		$ShowObjective  = verifyshowobjective("simplexdisplaylatex",$args[3],1,1);
+		$ShowObjective  = verifyshowobjective("simplexdisplaylatex",$args[3],1);
 	}
 	else {
 		$ShowObjective = 1;
@@ -1803,7 +1803,7 @@ function simplexdisplaytable2() {
 
 	// show objective ;
 	if((count($args)>10)&&(!is_null($args[10]))) {
-		$ShowObjective  = verifyshowobjective("simplexdisplaylatex",$args[10],1,1);
+		$ShowObjective  = verifyshowobjective("simplexdisplaylatex",$args[10],1);
 	}
 	else {
 		$ShowObjective = 1;
@@ -2456,7 +2456,7 @@ function simplexreadsolutionarray($sma,$type,$showfractions=1,$ismixed=FALSE,$de
                     // last row is zero - might be a non zero value
                     for($r=0;$r<$lastrow;$r++) {
                         // find the non zero entry row
-                        if(($sma[$r][$c][0]!=0)&&($sma[$r][$c][0]!=0)) {
+                        if($sma[$r][$c][0]!=0) {
                             if($columnsolutionfound) {
                                 // already has a non zero entry - solution is a zero
                                 $columnsolutionfound = false;
@@ -2526,7 +2526,7 @@ function simplexreadsolutionarray($sma,$type,$showfractions=1,$ismixed=FALSE,$de
                     // last row is zero - might be a non zero value
                     for($r=0;$r<$lastrow;$r++) {
                         // find the non zero entry row
-                        if(($sma[$r][$c][0]!=0)&&($sma[$r][$c][0]!=0)) {
+                        if($sma[$r][$c][0]!=0) {
                             if($columnsolutionfound) {
                                 // already has a non zero entry - solution is a zero
                                 $columnsolutionfound = false;
@@ -3404,7 +3404,7 @@ function simplexdisplaytable() {
                 $pivottextcolor = $currentpoint[3];
 			}
 
-			if(($prow >= 0)&&($prow >= 0)) {
+			if(($prow >= 0)&&($pcol >= 0)) {
                 $pivotstylematrix[$prow][$pcol] = "style='border:1px solid $pivotbordercolor;color:$pivottextcolor'";
 			}
 		}
@@ -3651,6 +3651,8 @@ function simplexsolve($sm,$type,$showfractions=1) {
 
 
 //Change log
+// 2023-09-2  ver 48 - 
+//
 // 2022-12-12 ver 47 - Fixed logic bug in simplexreadsolutionarray - mixed constraints do not work
 //                     in the library. Working on a TODO list to add mixed constraints.
 //
@@ -3762,4 +3764,3 @@ function simplexsolve($sm,$type,$showfractions=1) {
 //     simplexconverttofraction
 //     simplexdisplaycolortable
 //     simplexsolutionconverttofraction
-

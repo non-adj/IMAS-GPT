@@ -4,9 +4,9 @@
 	//add/modify gbitem w/ grade edit
 	//grade edit
 	//single grade edit
-	require("../init.php");
-	require("../includes/htmlutil.php");
-	require_once("../includes/TeacherAuditLog.php");
+	require_once "../init.php";
+	require_once "../includes/htmlutil.php";
+	require_once "../includes/TeacherAuditLog.php";
 
 	$istutor = false;
 	$isteacher = false;
@@ -30,15 +30,15 @@
 			}
 		}
 		if (!$isok) {
-			require("../header.php");
+			require_once "../header.php";
 			echo "You don't have authority for this action";
-			require("../footer.php");
+			require_once "../footer.php";
 			exit;
 		}
 	} else if (!$isteacher) {
-		require("../header.php");
+		require_once "../header.php";
 		echo "You need to log in as a teacher to access this page";
-		require("../footer.php");
+		require_once "../footer.php";
 		exit;
 	}
 	$cid = Sanitize::courseId($_GET['cid']);
@@ -78,7 +78,7 @@
 			}
 			exit;
 		} else {
-			require("../header.php");
+			require_once "../header.php";
 			$stm = $DBH->prepare("SELECT name,courseid FROM imas_gbitems WHERE id=:id");
 			$stm->execute(array(':id'=>$delItem));
 			list($itemname,$itemcourseid) = $stm->fetch(PDO::FETCH_NUM);
@@ -97,7 +97,7 @@
 				Sanitize::encodeUrlParam($_GET['stu']), $cid, Sanitize::encodeUrlParam($_GET['del']));
 
 			echo '</p></form>';
-			require("../footer.php");
+			require_once "../footer.php";
 			exit;
 		}
 
@@ -124,7 +124,7 @@
 	}
 
 	if (isset($_POST['name']) && $isteacher) {
-		require_once("../includes/parsedatetime.php");
+		require_once "../includes/parsedatetime.php";
 		if ($_POST['sdatetype']=='0') {
 			$showdate = 0;
 		} else {
@@ -214,7 +214,7 @@
                     $attper = 0;
                     $att = 0;
                     if ($row[2] !== '') {
-                        $data = json_decode(gzdecode($row[2]), true);
+                        $data = json_decode(Sanitize::gzexpand($row[2]), true);
                         if ($data !== false) {
                             $av = $data['assess_versions'][$data['scored_version']];
                             $qcnt = 0;
@@ -445,8 +445,8 @@
 	if ($_SESSION['useed']!=0) {
 		$placeinhead .= '<script type="text/javascript"> initeditor("divs","fbbox",null,true);</script>';
 	}
-	require("../includes/rubric.php");
-	require("../header.php");
+	require_once "../includes/rubric.php";
+	require_once "../header.php";
     echo "<div class=breadcrumb>$breadcrumbbase ";
     if (empty($_COOKIE['fromltimenu'])) {
         echo " <a href=\"course.php?cid=$cid\">".Sanitize::encodeStringForDisplay($coursename)."</a> &gt; ";
@@ -528,14 +528,14 @@
 		}
 
 		$outcomes = array();
-		function flattenarr($ar) {
+		function flattenarr($ar, $deftype = 0) {
 			global $outcomes;
 			foreach ($ar as $v) {
 				if (is_array($v)) { //outcome group
 					$outcomes[] = array($v['name'], 1);
-					flattenarr($v['outcomes']);
+					flattenarr($v['outcomes'], 2);
 				} else {
-					$outcomes[] = array($v, 0);
+					$outcomes[] = array($v, $deftype);
 				}
 			}
 		}
@@ -620,7 +620,7 @@ at <input type=text size=10 name=stime value="<?php echo Sanitize::encodeStringF
 				printf('<option value="%d">%s</option>', Sanitize::encodeStringForDisplay($row[0]),
                     Sanitize::encodeStringForDisplay($row[1]));
 			}
-			echo '<select><br/>';
+			echo '</select><br/>';
 			echo 'Grade type:<br/> <input type="radio" name="assesssnaptype" value="0" checked="checked">Current score ';
 			echo '<br/><input type="radio" name="assesssnaptype" value="1">Participation: give full credit if &ge; ';
 			echo '<input type="text" name="assesssnapatt" value="100" size="3">% of problems attempted and &ge; ';
@@ -828,7 +828,7 @@ at <input type=text size=10 name=stime value="<?php echo Sanitize::encodeStringF
 
 <?php
 	$placeinfooter = '<div id="autosuggest"><ul></ul></div>';
-	require("../footer.php");
+	require_once "../footer.php";
 
 function getpts($sc) {
 	if (strpos($sc,'~')===false) {
